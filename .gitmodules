@@ -1,0 +1,6 @@
+[submodule "modules/gb-dispatch-model"]
+	path = modules/gb-dispatch-model
+	url = https://github.com/open-energy-transition/gb-dispatch-model.git
+[submodule "modules/NGV-IEM"]
+	path = modules/NGV-IEM
+	url = https://github.com/open-energy-transition/NGV-IEM.git
