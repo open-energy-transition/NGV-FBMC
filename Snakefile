@@ -66,3 +66,9 @@ module gbmodel:
 
 # Import all rules from GB model module with a prefix
 use rule * from gbmodel as gbmodel_*
+
+rule call_gb_results:
+    input:
+        "modules/gb-dispatch-model/results/GB/networks/constrained_clustered/2040.nc"
+    shell:
+        "pixi run --manifest-path modules/gb-dispatch-model/pixi.toml --environment gb-model"
