@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: Contributors to Open-TYNDP <https://github.com/open-energy-transition/open-tyndp>
+# SPDX-FileCopyrightText: Contributors to NGV-FBMC <https://github.com/open-energy-transition/NGV-FBMC>
 # SPDX-FileCopyrightText: Contributors to PyPSA-Eur <https://github.com/pypsa/pypsa-eur>
 #
 # SPDX-License-Identifier: MIT
 
 [workspace]
-authors = ["Contributors to Open-TYNDP"]
+authors = ["Contributors to NGV-FBMC"]
 channels = ["conda-forge", "bioconda", "gurobi"]
 name = "pypsa-eur"
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
@@ -156,13 +156,27 @@ all-tests = {depends-on = ["integration-tests", "clean-tests", "unit-tests"]}
 [feature.test.dependencies]
 pytest = ">=8.4.2"
 
-[feature.ngv.tasks]
-ngv = """bash -c '
-    snakemake --cores all --configfile config/config.ngv.yaml --rerun-incomplete --keep-going
-    '
+[feature.ngv-fbmc.tasks]
+gb-dispatch-model = """
+	snakemake --cores all modules/gb-dispatch-model/results/GB/networks/constrained_clustered/2030.nc -n
 """
+ngv-iem-model = """
+    snakemake --cores all ngviem_all -n
+"""
+
+[feature.ngv-fbmc.dependencies]
+# Extra dependencies from module/gb-dispatch-model
+curl = ">=8.17.0"
+python-dotenv = ">=1.2.1"
+gurobi = "<13.0"
+shapely = ">=2.1"
+pypsa = ">=1.0.7"
+
+[feature.ngv-fbmc.pypi-dependencies]
+# Extra dependencies from module/gb-dispatch-model
+pdfplumber = "==0.9.0"
 
 [environments]
 doc = { features = ["doc"], no-default-feature = true }
 test = ["test"]
-ngv = ["ngv", "test"]  # for ease, we include test deps in our working environment
+ngv-fbmc = ["ngv-fbmc", "test"]  # for ease, we include test deps in our working environment
