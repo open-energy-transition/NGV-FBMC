@@ -30,7 +30,7 @@ for configfile in configfiles_iem:
     update_config(config_iem, config_part)
 
 
-module iem:
+module ngviem:
     snakefile:
         "modules/NGV-IEM/Snakefile"
     prefix:
@@ -40,7 +40,7 @@ module iem:
 
 
 # Import all rules from IEM module with a prefix
-use rule * from iem as iem_*
+use rule * from ngviem as ngviem_*
 
 
 # Need to load the configuration for GB model module separately
@@ -55,7 +55,7 @@ for configfile in configfiles_gbmodel:
     update_config(config_gbmodel, config_part)
 
 
-module gbmodel:
+module gbdispatchmodel:
     snakefile:
         "modules/gb-dispatch-model/Snakefile"
     prefix:
@@ -65,10 +65,4 @@ module gbmodel:
 
 
 # Import all rules from GB model module with a prefix
-use rule * from gbmodel as gbmodel_*
-
-rule call_gb_results:
-    input:
-        "modules/gb-dispatch-model/results/GB/networks/constrained_clustered/2040.nc"
-    shell:
-        "pixi run --manifest-path modules/gb-dispatch-model/pixi.toml --environment gb-model"
+use rule * from gbdispatchmodel as gbdispatchmodel_*
