@@ -25,7 +25,7 @@
   ```
 * To run the default `NGV-IEM` model, use:
   ```bash
-  pixi run ngv-iem-model
+  pixi run snakemake --cores all run_ngviem_model_as_rule
   ```
 * To run the full model, use:
   ```bash

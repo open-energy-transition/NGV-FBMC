@@ -15,44 +15,39 @@ from snakemake.utils import update_config
 #    cannot be found.
 
 
-# Need to load the configuration for IEM module separately
-configfiles_iem = [
-    "modules/NGV-IEM/config/config.default.yaml",
-    "modules/NGV-IEM/config/plotting.default.yaml",
-    "modules/NGV-IEM/config/benchmarking.default.yaml",
-    "modules/NGV-IEM/config/config.tyndp.yaml",
-    "modules/NGV-IEM/config/config.ngv.yaml",
-]
-
-config_iem = {}
-for configfile in configfiles_iem:
-    config_part = load_configfile(configfile)
-    update_config(config_iem, config_part)
-
-
-module ngviem:
-    snakefile:
-        "modules/NGV-IEM/Snakefile"
-    prefix:
-        "modules/NGV-IEM/"
-    config:
-        config_iem
+# We create a rule to run this model standalone as a pixi task, rather than including it as a snakemake module
+# Reason for this approach: Two models that are forked from PyPSA-Eur currently lead to collisions with snakemake
+# making it too error-prone to use them both as module at the same time. This might be fixed in the future
+# by this PR by us ( ), for now we use a less beautiful but more utalitarian solution.
+# We list all files that we need from the other model to have them registered with the remaining snakemake workflow
+rule run_ngviem_model_as_rule:
+    message:
+        "Running the full phase 01 NGV-IEM model."
+    input:
+        manifest="modules/NGV-IEM/pixi.toml",
+    output:
+        results_2030="modules/NGV-IEM/results/ngv-iem/latest/networks/base_s_all___2030.nc",
+        results_2030_noce="modules/NGV-IEM/results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc",
+        results_2030_lluk="modules/NGV-IEM/results/ngv-iem/latest/networks/base_s_all_lluk__2030.nc",
+        results_2040="modules/NGV-IEM/results/ngv-iem/latest/networks/base_s_all___2040.nc",
+        results_2040_noce="modules/NGV-IEM/results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc",
+        results_2040_lluk="modules/NGV-IEM/results/ngv-iem/latest/networks/base_s_all_lluk__2040.nc",
+    shell:
+        "pixi run --manifest-path={input.manifest} ngv"
 
 
-# Import all rules from IEM module with a prefix
-use rule * from ngviem as ngviem_*
-
-
-# Need to load the configuration for GB model module separately
-configfiles_gbmodel = [
+# Need to load the configuration for GB model module separately as they
+# they cannot be found in `config/*` (where the `modules/gb-dispatch-model/Snakefile` looks for them),
+# but in `modules/gb-dispatch-model/config/*`
+configfiles_gbdispatchmodel = [
     "modules/gb-dispatch-model/config/config.default.yaml",
     "modules/gb-dispatch-model/config/plotting.default.yaml",
     "modules/gb-dispatch-model/config/config.gb.default.yaml",
 ]
-config_gbmodel = {}
-for configfile in configfiles_gbmodel:
-    config_part = load_configfile(configfile)
-    update_config(config_gbmodel, config_part)
+config_gbdispatchmodel = {}
+for configfile in configfiles_gbdispatchmodel:
+    config_part = load_config > file(configfile)
+    update_config(config_gbdispatchmodel, config_part)
 
 
 module gbdispatchmodel:
@@ -61,8 +56,7 @@ module gbdispatchmodel:
     prefix:
         "modules/gb-dispatch-model/"
     config:
-        config_gbmodel
+        config_gbdispatchmodel
 
 
-# Import all rules from GB model module with a prefix
-use rule * from gbdispatchmodel as gbdispatchmodel_*
+use rule * from gbdispatchmodel as GBDM_*
