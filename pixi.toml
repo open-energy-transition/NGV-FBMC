@@ -186,7 +186,16 @@ pypsa = ">=1.0.7"
 # Extra dependencies from module/gb-dispatch-model
 pdfplumber = "==0.9.0"
 
+[feature.dev.tasks]
+pc = """
+    pre-commit run --all-files
+"""
+
+[feature.dev.dependencies]
+pre-commit = ">=4.3.0"
+
 [environments]
 doc = { features = ["doc"], no-default-feature = true }
 test = ["test"]
+dev = ["dev"]
 ngv-fbmc = ["ngv-fbmc", "test"]  # for ease, we include test deps in our working environment
