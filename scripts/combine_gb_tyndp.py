@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pypsa
 
-def combine_networks(gb, eur):
+def merge_gb_tyndp(gb, eur):
 	# prepare eur network
 	eur.remove("Bus","GB00")
 	idx = eur.c['Bus'].static[eur.c['Bus'].static.location == "GB00"].index
@@ -35,7 +35,9 @@ def combine_networks(gb, eur):
 		# is it ok to rename the buses here or do i need to make a new bus using network remove/add property
 		# note that the network gets merged later on
 		country_matches = [eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name)]
-		gb_eur_busmap[name] = country_matches
+		buses_keep = ['DKW1', 'NOS0', 'FR00']
+	    intersection = list(set(buses_keep) & set(country_matches))
+	    gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
 	# renaming the buses doesn't help since the str is carried to each component
 	# also if you rename the buses the pypsa merge requires you to drop them
@@ -43,6 +45,11 @@ def combine_networks(gb, eur):
 		cols = [col for col in gb.c[comp].static.columns if col.startswith('bus')]
 		for col in cols:
 			gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
+
+	# these buses are no longer relevant
+	gb.remove("Bus", non_gb_buses)
+
+	# rename the carriers to align with the eur model
 
 	# pypsa merge doesn't like overlapping components
 	gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
@@ -64,5 +71,5 @@ if __name__ == "__main__":
 	eur_fp = "modules/NGV-IEM/resources/ngv-iem/fbmc-test-1H-Jan/networks/base_s_all_elec.nc"
 	n_eur = pypsa.Network(eur_fp)
 
-	combined_n = combine_networks(n_gb, n_eur)
+	combined_n = merge_gb_tyndp(n_gb, n_eur)
 
