@@ -166,36 +166,7 @@ all-tests = {depends-on = ["integration-tests", "clean-tests", "unit-tests"]}
 [feature.test.dependencies]
 pytest = ">=8.4.2"
 
-[feature.ngv-fbmc.tasks]
-gb-dispatch-model = """
-	snakemake --cores all modules/gb-dispatch-model/results/GB/networks/constrained_clustered/2030.nc -n
-"""
-ngv-iem-model = """
-    snakemake --cores all ngviem_all -n
-"""
-
-[feature.ngv-fbmc.dependencies]
-# Extra dependencies from module/gb-dispatch-model
-curl = ">=8.17.0"
-python-dotenv = ">=1.2.1"
-gurobi = "<13.0"
-shapely = ">=2.1"
-pypsa = ">=1.0.7"
-
-[feature.ngv-fbmc.pypi-dependencies]
-# Extra dependencies from module/gb-dispatch-model
-pdfplumber = "==0.9.0"
-
-[feature.dev.tasks]
-pc = """
-    pre-commit run --all-files
-"""
-
-[feature.dev.dependencies]
-pre-commit = ">=4.3.0"
-
 [environments]
 doc = { features = ["doc"], no-default-feature = true }
 test = ["test"]
-dev = ["dev"]
 ngv-fbmc = ["ngv-fbmc", "test"]  # for ease, we include test deps in our working environment

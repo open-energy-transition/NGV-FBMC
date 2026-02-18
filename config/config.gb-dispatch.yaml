@@ -1,0 +1,6 @@
+# Contains additional configuration options that overwrite the defaults
+# coming from the gb-dispatch-model.
+
+# Need an entry such that Snakemake considers this a valid yaml file
+# Can be removed once there are other actual entries in this file
+place: holder
