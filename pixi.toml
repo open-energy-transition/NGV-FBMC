@@ -169,4 +169,3 @@ pytest = ">=8.4.2"
 [environments]
 doc = { features = ["doc"], no-default-feature = true }
 test = ["test"]
-ngv-fbmc = ["ngv-fbmc", "test"]  # for ease, we include test deps in our working environment
