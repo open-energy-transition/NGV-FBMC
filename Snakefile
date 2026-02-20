@@ -2,7 +2,7 @@ from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
 
-configfile: "config/config.yaml"
+configfile: "config/config.ngv-fbmc.yaml"
 
 
 # Notes about limitations in integrating existing workflows as modules:
@@ -216,12 +216,13 @@ rule prepare_scenario_TF:
 rule prepare_scenario_SQ:
     message:
         "Preparing model for status quo scenario based on combined model for year {wildcards.year} (scenario: SQ - status quo)."
+    params:
+        explicit_allocation=config["explicit_allocation"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
         model_tf=rules.prepare_scenario_TF.output.model,
     output:
         model="resources/dispatch/networks/SQ/{year}.nc",
-        # For validation only:
         line_limits="resources/dispatch/line_limits/{year}.csv",
     log:
         "logs/prepare_scenario_SQ/{year}.log",
