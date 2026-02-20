@@ -13,12 +13,12 @@ import pypsa
 def merge_gb_tyndp(gb, eur):
 	# prepare eur network by removing GB elements
 	for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
-		idx = eur.c[comp].static[eur.c[comp].static.index.str.contains("GB00") | eur.c[comp].static.index.str.contains("GBOH")].index
+	idx = eur.c[comp].static[eur.c[comp].static.index.str.contains("GB00") | eur.c[comp].static.index.str.contains("GBOH")].index
+	eur.remove(comp, idx)
+	cols = [col for col in eur.c[comp].static.columns if col.startswith('bus')]
+	for col in cols:
+		idx = eur.c[comp].static.loc[eur.c[comp].static[col] == "GB00"].index
 		eur.remove(comp, idx)
-		cols = [col for col in eur.c[comp].static.columns if col.startswith('bus')]
-		for col in cols:
-			idx = eur.c[comp].static.loc[eur.c[comp].static[col] == "GB00"].index
-			eur.remove(comp, idx)
 
 	# for reference, the remaining buses in each bidding zone in each country
 	eur_elec_buses = eur.buses[eur.buses.carrier == 'AC'].index
@@ -58,20 +58,6 @@ def merge_gb_tyndp(gb, eur):
 	gb.remove("Bus", non_gb_buses)
 
 	# rename the carriers to align with the eur model
-	carrier_map = {"H2 Electrolysis": "H2 electrolysis"}
-
-	# renaming the buses doesn't help since the str is carried to each component
-	# also if you rename the buses the pypsa merge requires you to drop them
-	for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
-		cols = [col for col in gb.c[comp].static.columns if col.startswith('bus')]
-		for col in cols:
-			gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
-
-		if "location" in gb.c[comp].static.columns:
-			gb.c[comp].static["location"] = gb.c[comp].static["location"].replace(gb_eur_map)
-
-		if "carrier" in gb.c[comp].static.columns:
-			gb.c[comp].static["carrier"] = gb.c[comp].static["carrier"].replace(carrier_map)
 
 	# pypsa merge doesn't like overlapping components
 	gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
@@ -81,14 +67,12 @@ def merge_gb_tyndp(gb, eur):
 	return res
 
 if __name__ == "__main__":
-	if "snakemake" not in globals():
-		from scripts._helpers import mock_snakemake
+	gb_fp = "modules/gb-dispatch-model/resources/GB/networks/unconstrained_clustered/2035.nc"
+	n_gb = pypsa.Network(gb_fp)
 
-		snakemake = mock_snakemake()
+	eur_fp = "modules/NGV-IEM/resources/ngv-iem/fbmc-test-1H-Jan/networks/base_s_all_elec.nc"
+	n_eur = pypsa.Network(eur_fp)
 
-	# todo: change to snakemake input 
-	n_gb = pypsa.Network(snakemake.input.gb_model)
-	n_eur = pypsa.Network(snakemake.input.iem_model)
+	combined_n = merge_gb_tyndp(n_gb, n_eur)
 
-	n_merged = merge_gb_tyndp(n_gb, n_eur)
-	n_merged.export_to_netcdf(snakemake.output[0])
+
