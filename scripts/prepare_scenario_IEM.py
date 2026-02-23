@@ -58,7 +58,58 @@ def merge_gb_tyndp(gb, eur):
 	gb.remove("Bus", non_gb_buses)
 
 	# rename the carriers to align with the eur model
-	carrier_map = {"H2 Electrolysis": "H2 electrolysis"}
+	carrier_map = {
+		"Link":{
+			'Baseline Electricity unmanaged load':'electricity distribution grid', 
+			'EV DSR shift':'home battery charger', 
+			'H2 Turbine':'h2-ccgt', 
+			'Baseline Electricity (I&C) DSR reverse':'battery discharger', 
+			'Baseline Electricity (Residential) DSR shift':'battery charger', 
+			'EV unmanaged load':'home battery charger', 
+			# 'I&C Heat DSR reverse', 
+			'Baseline Electricity (I&C) DSR shift':'battery discharger', 
+			'Baseline Electricity (Residential) DSR reverse':'battery charger', 
+			# 'Residential Heat unmanaged load', 
+			# 'Residential Heat DSR reverse', 
+			'ev V2G':'home battery discharger', 
+			# 'Residential Heat DSR shift', 
+			'EV DSR reverse':'home battery discharger', 
+			# 'I&C Heat DSR shift', 
+			# 'I&C Heat unmanaged load'
+		},
+		"Store":{
+			# 'Residential Heat DSR', 
+			'ev V2G':'home battery', 
+			'Baseline Electricity (Residential) DSR':'battery', 
+			# 'I&C Heat DSR', 
+			'Baseline Electricity (I&C) DSR':'battery', 
+			'EV DSR':'home battery'
+		},
+		"StorageUnit":{
+			'hydro':'hydro-reservoir', 
+			'Battery Storage':'battery', # battery is a store carrier 
+			'PHS':'hydro-phs' # hydro-phs is a store carrier 
+		},
+		"Generator":{
+			# 'nuclear', generator in GB, link in EUR 
+			'solar':'solar-pv-utility', 
+			# 'waste', 
+			'biomass':'solid biomass', 
+			'oil':'oil primary', 
+			# 'geothermal', 
+			# 'engine', not sure what this is?
+			# 'Load Shedding', 
+			'offwind-dc':'offwind-dc-fl-oh', 
+		},
+		"Load":{
+			# '':, 
+			'EV':'electricity', 
+			'Baseline Electricity':'electricity', 
+			# 'Residential Heat', 
+			# 'I&C Heat', 
+			'H2':'H2 exogenous demand'
+		},
+	}
 
 	# renaming the buses doesn't help since the str is carried to each component
 	# also if you rename the buses the pypsa merge requires you to drop them
@@ -71,11 +122,11 @@ def merge_gb_tyndp(gb, eur):
 			gb.c[comp].static["location"] = gb.c[comp].static["location"].replace(gb_eur_map)
 
 		if "carrier" in gb.c[comp].static.columns:
-			gb.c[comp].static["carrier"] = gb.c[comp].static["carrier"].replace(carrier_map)
+			gb.c[comp].static["carrier"] = gb.c[comp].static["carrier"].replace(carrier_map[comp])
 
 	# pypsa merge doesn't like overlapping components
 	gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
-
+	gb.remove("Carrier", carrier_map.keys())
 	res = eur.merge(gb, with_time=True)
 
 	return res
