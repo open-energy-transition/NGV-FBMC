@@ -95,7 +95,7 @@ def merge_gb_tyndp(gb, eur):
 			'solar':'solar-pv-utility', 
 			# 'waste', 
 			'biomass':'solid biomass', 
-			'oil':'oil primary', 
+			'oil':'oil-heavy', 
 			# 'geothermal', 
 			# 'engine', not sure what this is?
 			# 'Load Shedding', 
@@ -131,6 +131,39 @@ def merge_gb_tyndp(gb, eur):
 
 	return res
 
+def add_co2_multilink(n, eur):
+	# this is the carrier map essentially so it needs to be cleaned up
+	gen_types = [
+	['CCGT', 'gas-ccgt'],
+	['OCGT', 'gas-ocgt'],
+	['nuclear', 'nuclear'],
+	# ['biomass', ''], 
+	# ['engine', ''],
+	['oil', 'oil-heavy'], # only oil-heavy has a GB based gen in TYNDP
+	# ['waste', ''],
+	['coal', 'lignite'] # double check that lignite and coal are interchangeable in this context
+	]
+	for gen_type in gen_types:
+		ccgt = n.generators[(n.generators.carrier == gen_type[0]) & (n.generators.bus.str.startswith('GB'))]
+		ref = eur.generators[(eur.generators.carrier == gen_type[1])]
+
+		# add a copy of the generator as a link - use european model as a reference for unknown efficiencies
+		n.add(
+			"Link",
+			name = gens.index,
+			bus0 = ref.bus0.mode()[0],
+			bus1 = gens.bus,
+			bus2 = ref.bus2.mode()[0],
+			p_nom = gens.p_nom,
+			efficiency = gens.efficiency, #ref.efficiency.mean(),
+			efficiency2 = ref.efficiency2.mean()
+		)
+
+		# remove the generator after the link version is created
+		n.remove('Generator', gens.index)
+	return n
+
+
 if __name__ == "__main__":
 	if "snakemake" not in globals():
 		from scripts._helpers import mock_snakemake
@@ -139,6 +172,8 @@ if __name__ == "__main__":
 
 	# todo: change to snakemake input 
 	n_gb = pypsa.Network(snakemake.input.gb_model)
+	n_gb = add_co2_multilink(n_gb)
+
 	n_eur = pypsa.Network(snakemake.input.iem_model)
 
 	n_merged = merge_gb_tyndp(n_gb, n_eur)
