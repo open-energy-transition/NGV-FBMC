@@ -159,6 +159,9 @@ def extend_primary_fuel_sources(n):
 
 def add_electrolysis_constraints(n):
     """Enforce the electrolysis dispatch to the optimal dispatch found in the solved network."""
+    logger.info(
+        "Constraining electrolysis dispatch to the optimal dispatch found in the previously solved network."
+    )
     electrolysis_i = n.links[n.links.carrier == "H2 Electrolysis"].index
     n.links_t.p_set.loc[:, electrolysis_i] = n.links_t.p0.loc[:, electrolysis_i]
     return n
@@ -215,6 +218,7 @@ if __name__ == "__main__":
     config = snakemake.params["explicit_allocation"]
 
     n = pypsa.Network(snakemake.input["model"])
+    n.name = f"{n.name} Status Quo (SQ)"
 
     line_limits = extract_line_limits(n_fp=snakemake.input["model_tf"], config=config)
 
@@ -232,7 +236,10 @@ if __name__ == "__main__":
     # Ensure electrolysis dispatch is fixed to the optimal dispatch in the previous run
     n = add_electrolysis_constraints(n)
 
-    n.name = f"{n.name} Status Quo (SQ)"
+    # Doesn't hurt
+    n.consistency_check()
+
+    # Safe modified network
     n.export_to_netcdf(snakemake.output["model"])
 
     # TODO from previous phase, probably not needed this time,
