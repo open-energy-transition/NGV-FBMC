@@ -24,13 +24,155 @@ explicit_allocation:
   - SENECA
   - Tarchon
   - Viking Link
-    # Connected to IE/NI - optimal allocation
-    # - East-West
-    # - Gallant
-    # - Greenlink (Greenwire)
-    # - LirIC
-    # - MARES
-    # - Moyle
-    # Connected to Norway - optimal allocation
-    # - Continental Link
-    # - NorthConnect
+      # Connected to IE/NI - optimal allocation
+      # - East-West
+      # - Gallant
+      # - Greenlink (Greenwire)
+      # - LirIC
+      # - MARES
+      # - Moyle
+      # Connected to Norway - optimal allocation
+      # - Continental Link
+      # - NorthConnect
+
+forecast_errors:
+  component_carrier_mapping:
+    # Mapping of the technology names used in the forecast error file to the component and carrier names in the network file
+    # Note: The names of the carriers will be matched as "carriers containing this string independent of case", so e.g.
+    # "offwind" will match "Offwind", "offwind-dc", etc.
+    "_Wind":
+    - "|generators|onwind"
+    - "|generators|offwind"
+    "_Solar":
+    - "|generators|solar-pv"
+    "_Load":
+    - "|loads|electricity"
+  bus_mapping:
+    # Mapping of the bus names in the forecast error file to the bus names in the network file
+    # Note: These names are matched as "strings starting with...", so e.g. "GB 1" also matches "GB 10", "GB 11", etc.
+    # which is why these must NOT be repeated, else the same forecast errors will be applied to these buses multiple times
+    # TODO check again with the merged model, might require some adjustments
+    "AT":
+    - "AT00"
+    "BE":
+    - "BE00"
+    - "BEIOH01"
+    - "BEOH001"
+    "CH":
+    - "CH00"
+    "CZ":
+    - "CZ00"
+    "DE":
+    - "DE00"
+    - "DEOH001"
+    - "DEOH002"
+    - "DEOR001"
+    "DK1":
+    - "DKE1"
+    - "DKE0R01"
+    "DK2":
+    - "DKW1"
+    - "DKW0R01"
+    "ES":
+    - "ES00"
+    - "ESOH001"
+    - "ESOH003"
+    - "ESOH002"
+    "FI":
+    - "FI00"
+    - "FIOH001"
+    "FR":
+    - "FR00"
+    - "FR15"
+    - "FROH001"
+    - "FROH002"
+    - "FROH003"
+    "GB":
+    - "GB 1"   # also matches "GB 10", "GB 11", etc.
+    - "GB 2"   # also matches "GB 20", "GB 21", etc.
+    - "GB 3"   # also matches "GB 31"
+    - "GB 4"
+    - "GB 5"
+    - "GB 6"
+    - "GB 7"
+    - "GB 8"
+    - "GB 9"
+    "HR":
+    - "HR00"
+    - "HROH001"
+    "IE":
+    - "IE00"
+    - "IEOH001"
+    "ITCA":
+    - "ITCA"
+    "ITCN":
+    - "ITCN"
+    - "ITCNOR1"
+    "ITCS":
+    - "ITCS"
+    - "ITCSOR1"
+    "ITN1":
+    - "ITN1"
+    - "ITN1OR1"
+    "ITS1":
+    - "ITS1"
+    - "ITS1OR1"
+    "ITSA":
+    - "ITSA"
+    - "ITSAOR1"
+    "ITSI":
+    - "ITSI"
+    - "ITSIOR1"
+    "NL":
+    - "NL00"
+    - "NLOR001"
+    - "NLOH001"
+    "NO1":
+    - "NOS0"
+    - "NOSOH01"
+    - "NOSOH02"
+    - "NOSOR01"
+    "NO3":
+    - "NOM1"
+    - "NOMOH01"
+    "NO4":
+    - "NON1"
+    - "NONOH01"
+    "PL":
+    - "PL00"
+    - "PLOH001"
+    "PT":
+    - "PT00"
+    - "PTOH001"
+    "SE1":
+    - "SE01"
+    - "SEOR001"
+    "SE2":
+    - "SE02"
+    - "SEOH001"
+    "SE3":
+    - "SE03"
+    - "SEOH002"
+    "SE4":
+    - "SE04"
+    - "SEOH003"
+    # not part of the TYNDP
+    # "NO2":
+    # missing forecast errors
+    # "AL":
+    # "BA":
+    # "BG":
+    # "EE":
+    # "GR":
+    # "HU":
+    # "ITVI":
+    # "LT":
+    # "LU":
+    # "LV":
+    # "ME":
+    # "MK":
+    # "MT":
+    # "RO":
+    # "RS":
+    # "SI":
+    # "SK":
