@@ -131,6 +131,15 @@ def merge_gb_tyndp(gb, eur):
 
 	return res
 
+def remove_co2_costs(n, fp):
+	powerplant_list = pd.read_csv(fp)
+	powerplant_list["marginal_cost_non_co2"] = powerplant_list["marginal_cost"] - powerplant_list["VOM_carbon"]
+	
+	# probably need to filter this by the generators we replace with multilinks
+	# if we can't replace all the generators with multilinks
+	n.generators['marginal_cost'] = n.generators['marginal_cost_non_co2']
+	return n
+
 def add_co2_multilink(n, eur):
 	# this is the carrier map essentially so it needs to be cleaned up
 	gen_types = [
