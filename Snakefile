@@ -203,7 +203,7 @@ rule prepare_scenario_TF:
     message:
         "Preparing model for uncertainty scenario based on combined model for year {wildcards.year} (scenario: TF - trader forecast)."
     input:
-        _model="resources/dispatch/networks/IEM/{year}.nc",
+        model="resources/dispatch/networks/IEM/{year}.nc",
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
     output:
         model="resources/dispatch/networks/TF/{year}.nc",
