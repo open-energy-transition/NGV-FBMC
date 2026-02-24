@@ -10,7 +10,68 @@ import numpy as np
 import pandas as pd
 import pypsa
 
-def merge_gb_tyndp(gb, eur):
+CARRIER_MAP = {
+		"Link":{
+			'EV unmanaged load':'home battery charger', 
+			'EV DSR shift':'home battery charger', 
+			'EV DSR reverse':'home battery discharger',
+			'ev V2G':'home battery discharger', 
+			
+			'H2 Turbine':'h2-ccgt', 
+			
+			'Baseline Electricity unmanaged load':'electricity distribution grid', 
+
+			'Baseline Electricity (I&C) DSR shift':'battery charger',
+			'Baseline Electricity (I&C) DSR reverse':'battery discharger', 
+			
+			'Baseline Electricity (Residential) DSR shift':'battery charger',
+			'Baseline Electricity (Residential) DSR reverse':'battery discharger', 
+			
+			'I&C Heat unmanaged load':'electricity distribution grid', 
+			'I&C Heat DSR shift':'battery charger', 
+			'I&C Heat DSR reverse':'battery discharger',  
+			 
+			'Residential Heat unmanaged load':'electricity distribution grid', 
+			'Residential Heat DSR shift':'battery charger', 
+			'Residential Heat DSR reverse':'battery discharger', 
+		},
+		"Store":{
+			'EV DSR':'home battery',
+			'ev V2G':'home battery', 
+			
+			'Baseline Electricity (I&C) DSR':'battery', 
+			'Baseline Electricity (Residential) DSR':'battery', 
+
+			'I&C Heat DSR': 'battery', 
+			'Residential Heat DSR': 'battery',
+		},
+		"StorageUnit":{
+			'hydro':'hydro-reservoir', 
+			'Battery Storage':'battery', # battery is a store carrier 
+			'PHS':'hydro-phs' # hydro-phs is a store carrier 
+		},
+		"Generator":{
+			'nuclear':'nuclear', # generator in GB, link in EUR 
+			'solar':'solar-pv-utility', 
+			'waste':'waste', 
+			'biomass':'biomass', 
+			'oil':'oil-heavy', 
+			'geothermal':'geothermal', 
+			'engine':'oil-heavy', #not sure what this is?
+			'Load Shedding':'load', 
+			'offwind-dc':'offwind-dc-fl-oh', 
+		},
+		"Load":{
+			'':'electricity', # off grid electrolysis
+			'EV':'electricity', 
+			'Baseline Electricity':'electricity', 
+			'Residential Heat':'electricity', 
+			'I&C Heat':'electricity', 
+			'H2':'H2 exogenous demand'
+		},
+	}
+
+def merge_gb_tyndp(gb, eur, carrier_map=CARRIER_MAP):
 	# prepare eur network by removing GB elements
 	for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
 		idx = eur.c[comp].static[eur.c[comp].static.index.str.contains("GB00") | eur.c[comp].static.index.str.contains("GBOH")].index
@@ -42,7 +103,7 @@ def merge_gb_tyndp(gb, eur):
 	for name, bus in non_gb_buses_h2.iterrows():
 		# is it ok to rename the buses here or do i need to make a new bus using network remove/add property
 		# note that the network gets merged later on
-		country_matches = [eur_bus for eur_bus in eur_h2_buses if eur_bus.startswith(name[:-3])]
+		country_matches = [eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name[:-3])]
 		buses_keep = ['DKW1 H2', 'NOS0 H2', 'FR00 H2']
 		intersection = list(set(buses_keep) & set(country_matches))
 		gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
@@ -55,61 +116,9 @@ def merge_gb_tyndp(gb, eur):
 			gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
 
 	# these buses are no longer relevant
-	gb.remove("Bus", non_gb_buses)
+	gb.remove("Bus", non_gb_buses.index)	
 
-	# rename the carriers to align with the eur model
-	carrier_map = {
-		"Link":{
-			'Baseline Electricity unmanaged load':'electricity distribution grid', 
-			'EV DSR shift':'home battery charger', 
-			'H2 Turbine':'h2-ccgt', 
-			'Baseline Electricity (I&C) DSR reverse':'battery discharger', 
-			'Baseline Electricity (Residential) DSR shift':'battery charger', 
-			'EV unmanaged load':'home battery charger', 
-			# 'I&C Heat DSR reverse', 
-			'Baseline Electricity (I&C) DSR shift':'battery discharger', 
-			'Baseline Electricity (Residential) DSR reverse':'battery charger', 
-			# 'Residential Heat unmanaged load', 
-			# 'Residential Heat DSR reverse', 
-			'ev V2G':'home battery discharger', 
-			# 'Residential Heat DSR shift', 
-			'EV DSR reverse':'home battery discharger', 
-			# 'I&C Heat DSR shift', 
-			# 'I&C Heat unmanaged load'
-		},
-		"Store":{
-			# 'Residential Heat DSR', 
-			'ev V2G':'home battery', 
-			'Baseline Electricity (Residential) DSR':'battery', 
-			# 'I&C Heat DSR', 
-			'Baseline Electricity (I&C) DSR':'battery', 
-			'EV DSR':'home battery'
-		},
-		"StorageUnit":{
-			'hydro':'hydro-reservoir', 
-			'Battery Storage':'battery', # battery is a store carrier 
-			'PHS':'hydro-phs' # hydro-phs is a store carrier 
-		},
-		"Generator":{
-			# 'nuclear', generator in GB, link in EUR 
-			'solar':'solar-pv-utility', 
-			# 'waste', 
-			'biomass':'solid biomass', 
-			'oil':'oil-heavy', 
-			# 'geothermal', 
-			# 'engine', not sure what this is?
-			# 'Load Shedding', 
-			'offwind-dc':'offwind-dc-fl-oh', 
-		},
-		"Load":{
-			# '':, 
-			'EV':'electricity', 
-			'Baseline Electricity':'electricity', 
-			# 'Residential Heat', 
-			# 'I&C Heat', 
-			'H2':'H2 exogenous demand'
-		},
-	}
+	# check all carriers are accounted for
 
 	# renaming the buses doesn't help since the str is carried to each component
 	# also if you rename the buses the pypsa merge requires you to drop them
@@ -126,50 +135,38 @@ def merge_gb_tyndp(gb, eur):
 
 	# pypsa merge doesn't like overlapping components
 	gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
-	gb.remove("Carrier", carrier_map.keys())
+	gb.remove("Bus", non_gb_buses_h2.index)
+
+	non_gb_lines = gb.lines[~(gb.lines.bus0.str.contains('GB')) & ~(gb.lines.bus1.str.contains('GB'))].index
+	gb.remove("lines", non_gb_lines)
+
 	res = eur.merge(gb, with_time=True)
 
 	return res
 
-def remove_co2_costs(n, fp):
-	powerplant_list = pd.read_csv(fp)
-	powerplant_list["marginal_cost_non_co2"] = powerplant_list["marginal_cost"] - powerplant_list["VOM_carbon"]
-	
-	# probably need to filter this by the generators we replace with multilinks
-	# if we can't replace all the generators with multilinks
-	n.generators['marginal_cost'] = n.generators['marginal_cost_non_co2']
-	return n
-
-def add_co2_multilink(n, eur):
+def add_co2_multilink(n, eur, carrier_map=CARRIER_MAP):
 	# this is the carrier map essentially so it needs to be cleaned up
-	gen_types = [
-	['CCGT', 'gas-ccgt'],
-	['OCGT', 'gas-ocgt'],
-	['nuclear', 'nuclear'],
-	# ['biomass', ''], 
-	# ['engine', ''],
-	['oil', 'oil-heavy'], # only oil-heavy has a GB based gen in TYNDP
-	# ['waste', ''],
-	['coal', 'lignite'] # double check that lignite and coal are interchangeable in this context
-	]
-	for gen_type in gen_types:
-		ccgt = n.generators[(n.generators.carrier == gen_type[0]) & (n.generators.bus.str.startswith('GB'))]
-		ref = eur.generators[(eur.generators.carrier == gen_type[1])]
+	emitting_carriers = eur.links.carrier.unique()
+	for gb_carrier, eur_carrier in carrier_map["Generator"].items():
+		if eur_carrier in emitting_carriers:
+			gens = n.generators[(n.generators.carrier == gb_carrier) & (n.generators.bus.str.startswith('GB'))]
+			ref = eur.links[(eur.links.carrier == eur_carrier)]
 
-		# add a copy of the generator as a link - use european model as a reference for unknown efficiencies
-		n.add(
-			"Link",
-			name = gens.index,
-			bus0 = ref.bus0.mode()[0],
-			bus1 = gens.bus,
-			bus2 = ref.bus2.mode()[0],
-			p_nom = gens.p_nom,
-			efficiency = gens.efficiency, #ref.efficiency.mean(),
-			efficiency2 = ref.efficiency2.mean()
-		)
+			# add a copy of the generator as a link - use european model as a reference for unknown efficiencies
+			n.add(
+				"Link",
+				name = gens.index,
+				bus0 = ref.bus0.mode()[0], # global supply bus
+				bus1 = gens.bus,
+				bus2 = ref.bus2.mode()[0], # co2 atmosphere
+				p_nom = gens.p_nom,
+				efficiency = gens.efficiency, #ref.efficiency.mean(),
+				efficiency2 = ref.efficiency2.mean()
+			)
 
-		# remove the generator after the link version is created
-		n.remove('Generator', gens.index)
+			# remove the generator after the link version is created
+			n.remove('Generator', gens.index)
+		
 	return n
 
 
@@ -181,9 +178,9 @@ if __name__ == "__main__":
 
 	# todo: change to snakemake input 
 	n_gb = pypsa.Network(snakemake.input.gb_model)
-	n_gb = add_co2_multilink(n_gb)
-
 	n_eur = pypsa.Network(snakemake.input.iem_model)
 
 	n_merged = merge_gb_tyndp(n_gb, n_eur)
+	n_merged = add_co2_multilink(n_merged, n_eur)
+
 	n_merged.export_to_netcdf(snakemake.output[0])
