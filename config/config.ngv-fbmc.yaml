@@ -3,28 +3,27 @@ explicit_allocation:
   to_from: "GB"
   # Carriers for the links; note, only Link components are supported, not Line components
   connection_types:
-    - DC
+  - DC
   # List of all the connections for which the explicit allocation should be applied
   # Connections may reference to one or more connection, by using regex wildcards for the name.
   # E.g. "GBOH001-DKWOH01-Offshore DC-20[34]0" will apply to
   # "GBOH001-DKWOH01-Offshore DC-2030" and "GBOH001-DKWOH01-Offshore DC-2040"
   connections:
-    - Aminth
-    - Cronos
-    - ElecLink
-    - FAB Link
-    - Gridlink
-    - IFA
-    - IFA2
-    - Kulizumboo
-    - LionLink (EuroLink)
-    - NS Link (NSL)
-    - Nautilus
-    - Nemo
-    - NeuConnect
-    - SENECA
-    - Tarchon
-    - Viking Link
+  - Aminth
+  - Cronos
+  - ElecLink
+  - FAB Link
+  - Gridlink
+  - IFA\d?   # Matches IFA and IFA2
+  - Kulizumboo
+  - LionLink \(EuroLink\)
+  - NS Link \(NSL\)
+  - Nautilus
+  - Nemo
+  - NeuConnect
+  - SENECA
+  - Tarchon
+  - Viking Link
     # Connected to IE/NI - optimal allocation
     # - East-West
     # - Gallant
