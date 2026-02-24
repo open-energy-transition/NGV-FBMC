@@ -98,11 +98,11 @@ def restrict_electricity_flows(
         matched_columns.extend(matches)
         matches_count[regex_pattern] = len(matches)
 
-    # Check that each regex pattern matched at least one column
-    for regex_pattern, count in matches_count.items():
-        if count == 0:
+        # Check that each regex pattern matched at least one column
+        if len(matches) == 0:
             raise ValueError(
-                f"The line regex pattern '{regex_pattern}' did not match any columns in the line limits file. Please check the pattern and the column names in the file."
+                f"The line regex pattern '{regex_pattern}' did not match any columns in the line limits file.\n"
+                f"Check the pattern and the column names in the file."
             )
 
     # Load the file again, but only with the matched columns + snapshot column
@@ -124,6 +124,16 @@ def restrict_electricity_flows(
     # For negative values: min=upper_bound*val (more negative), max=lower_bound*val (less negative)
     lower_limits = lower_bound * line_limits
     upper_limits = upper_bound * line_limits
+
+    # Quick check: No line should appear twice in line_limits (e.g. due to wrong regex patterns)
+    if lower_limits.columns.duplicated().any():
+        duplicated_columns = lower_limits.columns[
+            lower_limits.columns.duplicated()
+        ].unique()
+        raise ValueError(
+            f"The following lines appear multiple times in the line limits file, likely due to wrong regex patterns: {', '.join(duplicated_columns)}\n"
+            f"Check the regex patterns and the column names in the file."
+        )
 
     n.components.links.dynamic["p_min_pu"][line_limits.columns] = (
         np.minimum(lower_limits, upper_limits)
@@ -206,12 +216,6 @@ if __name__ == "__main__":
 
     n = pypsa.Network(snakemake.input["model"])
 
-    # TODO check which of these steps is necessary in the new network
-    n.optimize.fix_optimal_capacities()
-    n = remove_components_added_in_solve_network_py(n)
-    n = add_electrolysis_constraints(n)
-    n = extend_primary_fuel_sources(n)
-
     line_limits = extract_line_limits(n_fp=snakemake.input["model_tf"], config=config)
 
     # For validation, save the line limits to file
@@ -220,10 +224,19 @@ if __name__ == "__main__":
     n = restrict_electricity_flows(
         n=n,
         line_limits=line_limits,
-        explicitly_allocated_lines=config["explicitly_allocated_lines"],
+        explicitly_allocated_lines=config["connections"],
         lower_bound=0.95,
         upper_bound=1.05,
     )
 
+    # Ensure electrolysis dispatch is fixed to the optimal dispatch in the previous run
+    n = add_electrolysis_constraints(n)
+
     n.name = f"{n.name} Status Quo (SQ)"
     n.export_to_netcdf(snakemake.output["model"])
+
+    # TODO from previous phase, probably not needed this time,
+    # should already be taken care of in the prepare_scenario_IEM script
+    # n.optimize.fix_optimal_capacities()
+    # n = extend_primary_fuel_sources(n)
+    # n = remove_components_added_in_solve_network_py(n)
