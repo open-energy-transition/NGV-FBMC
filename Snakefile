@@ -1,6 +1,8 @@
 from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
+include: "rules/common.smk"
+
 # Notes about limitations in integrating existing workflows as modules:
 # 1. Each module has its own configuration files that need to be loaded separately.
 #    Loading from <module>/config/*.yaml does unfortunately not work,
@@ -107,10 +109,11 @@ rule run_gbdispatchmodel_as_rule:
 # 4. Setup the redispatch logic
 # Use the logic from the GB Dispatch Model to run it on the combined networks
 
-
 rule prepare_scenario_IEM:
     message:
         "Preparing a combined model based on phase NGV-IEM model and GB Dispatch Model network for year {wildcards.year} (scenario: IEM - integrated energy market)."
+    params:
+        carrier_map=config['carrier_mapping']
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
@@ -118,7 +121,7 @@ rule prepare_scenario_IEM:
             "resources/GB/networks/unconstrained_clustered/{year}.nc"
         ),
         iem_model=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all___{year}_no_ce.nc"
+            "results/ngv-iem/latest/networks/base_s_all___{year}_no_ce.nc",
         ),
     output:
         model="resources/dispatch/networks/IEM/{year}.nc",
@@ -231,3 +234,4 @@ rule solve_redispatch:
         "logs/solve_redispatch/{scenario}/{year}.log",
     script:
         "scripts/solve_redispatch.py"
+

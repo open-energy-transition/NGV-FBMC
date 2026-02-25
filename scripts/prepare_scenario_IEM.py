@@ -10,70 +10,9 @@ import numpy as np
 import pandas as pd
 import pypsa
 
-CARRIER_MAP = {
-		"Link":{
-			'EV unmanaged load':'home battery charger', 
-			'EV DSR shift':'home battery charger', 
-			'EV DSR reverse':'home battery discharger',
-			'ev V2G':'home battery discharger', 
-			
-			'H2 Turbine':'h2-ccgt', 
-			
-			'Baseline Electricity unmanaged load':'electricity distribution grid', 
-
-			'Baseline Electricity (I&C) DSR shift':'battery charger',
-			'Baseline Electricity (I&C) DSR reverse':'battery discharger', 
-			
-			'Baseline Electricity (Residential) DSR shift':'battery charger',
-			'Baseline Electricity (Residential) DSR reverse':'battery discharger', 
-			
-			'I&C Heat unmanaged load':'electricity distribution grid', 
-			'I&C Heat DSR shift':'battery charger', 
-			'I&C Heat DSR reverse':'battery discharger',  
-			 
-			'Residential Heat unmanaged load':'electricity distribution grid', 
-			'Residential Heat DSR shift':'battery charger', 
-			'Residential Heat DSR reverse':'battery discharger', 
-		},
-		"Store":{
-			'EV DSR':'home battery',
-			'ev V2G':'home battery', 
-			
-			'Baseline Electricity (I&C) DSR':'battery', 
-			'Baseline Electricity (Residential) DSR':'battery', 
-
-			'I&C Heat DSR': 'battery', 
-			'Residential Heat DSR': 'battery',
-		},
-		"StorageUnit":{
-			'hydro':'hydro-reservoir', 
-			'Battery Storage':'battery', # battery is a store carrier 
-			'PHS':'hydro-phs' # hydro-phs is a store carrier 
-		},
-		"Generator":{
-			'nuclear':'nuclear', # generator in GB, link in EUR 
-			'solar':'solar-pv-utility', 
-			'waste':'waste', 
-			'biomass':'biomass', 
-			'oil':'oil-heavy', 
-			'geothermal':'geothermal', 
-			'engine':'oil-heavy', #not sure what this is?
-			'Load Shedding':'load', 
-			'offwind-dc':'offwind-dc-fl-oh', 
-		},
-		"Load":{
-			'':'electricity', # off grid electrolysis
-			'EV':'electricity', 
-			'Baseline Electricity':'electricity', 
-			'Residential Heat':'electricity', 
-			'I&C Heat':'electricity', 
-			'H2':'H2 exogenous demand'
-		},
-	}
-
 logger = logging.getLogger(__name__)
 
-def merge_gb_tyndp(gb, eur, carrier_map=CARRIER_MAP):
+def merge_gb_tyndp(gb, eur, carrier_map):
 	# prepare eur network by removing GB elements
 	for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
 		idx = eur.c[comp].static[eur.c[comp].static.index.str.contains("GB00") | eur.c[comp].static.index.str.contains("GBOH")].index
@@ -143,11 +82,11 @@ def merge_gb_tyndp(gb, eur, carrier_map=CARRIER_MAP):
 	non_gb_lines = gb.lines[~(gb.lines.bus0.str.contains('GB')) & ~(gb.lines.bus1.str.contains('GB'))].index
 	gb.remove("lines", non_gb_lines)
 
-	res = eur.merge(gb, with_time=True)
+	res = eur.merge(gb, with_time=False)
 
 	return res
 
-def add_co2_multilink(n, eur, carrier_map=CARRIER_MAP):
+def add_co2_multilink(n, eur, carrier_map):
 	# this is the carrier map essentially so it needs to be cleaned up
 	emitting_carriers = eur.links.carrier.unique()
 	for gb_carrier, eur_carrier in carrier_map["Generator"].items():
@@ -179,11 +118,12 @@ if __name__ == "__main__":
 
 		snakemake = mock_snakemake()
 
+	carrier_map = snakemake.params.carrier_map	
 	# todo: change to snakemake input 
 	n_gb = pypsa.Network(snakemake.input.gb_model)
 	n_eur = pypsa.Network(snakemake.input.iem_model)
 
-	n_merged = merge_gb_tyndp(n_gb, n_eur)
-	n_merged = add_co2_multilink(n_merged, n_eur)
+	n_merged = merge_gb_tyndp(n_gb, n_eur, carrier_map)
+	n_merged = add_co2_multilink(n_merged, n_eur, carrier_map)
 
 	n_merged.export_to_netcdf(snakemake.output[0])
