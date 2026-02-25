@@ -2,6 +2,7 @@ from typing import Literal
 
 # PyPSA statistics
 GROUPBY_OPTIONS = Literal['component', 'carrier', 'name', 'bus', 'bus_carrier', 'country', 'time']
+GLOBAL_GROUPBY = ["component", "carrier", "name"]
 
 # PLOTTING
 FIG_SIZE = (8, 3)
