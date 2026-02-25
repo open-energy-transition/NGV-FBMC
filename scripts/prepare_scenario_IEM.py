@@ -71,6 +71,8 @@ CARRIER_MAP = {
 		},
 	}
 
+logger = logging.getLogger(__name__)
+
 def merge_gb_tyndp(gb, eur, carrier_map=CARRIER_MAP):
 	# prepare eur network by removing GB elements
 	for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
@@ -108,20 +110,21 @@ def merge_gb_tyndp(gb, eur, carrier_map=CARRIER_MAP):
 		intersection = list(set(buses_keep) & set(country_matches))
 		gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
-	# renaming the buses doesn't help since the str is carried to each component
-	# also if you rename the buses the pypsa merge requires you to drop them
-	for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
-		cols = [col for col in gb.c[comp].static.columns if col.startswith('bus')]
-		for col in cols:
-			gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
-
 	# these buses are no longer relevant
 	gb.remove("Bus", non_gb_buses.index)	
 
 	# check all carriers are accounted for
+	for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
+		gb_carriers = gb.c[comp].static.carrier.unique()
+		eur_carriers = eur.c[comp].static.carrier.unique()
+		for carrier in gb_carriers:
+			# check for 1:1 map
+			if not carrier in eur_carriers:
+				# check for mapping in the carrier map
+				if not carrier in carrier_map[comp].keys():
+					logger.warning(f"Cannot find mapped value for carrier {carrier} component type {comp}")
 
-	# renaming the buses doesn't help since the str is carried to each component
-	# also if you rename the buses the pypsa merge requires you to drop them
+	# connect to buses as named in open-tyndp
 	for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
 		cols = [col for col in gb.c[comp].static.columns if col.startswith('bus')]
 		for col in cols:
