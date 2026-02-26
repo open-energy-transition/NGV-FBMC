@@ -103,12 +103,15 @@ def add_co2_multilink(n, eur, carrier_map):
 				bus2 = ref.bus2.mode()[0], # co2 atmosphere
 				p_nom = gens.p_nom,
 				efficiency = gens.efficiency, #ref.efficiency.mean(),
-				efficiency2 = ref.efficiency2.mean()
+				efficiency2 = ref.efficiency2.mean(),
+				capital_cost = ref.capital_cost.mean(),
+				marginal_cost = ref.marginal_cost.mean(),
+				marginal_cost_quadratic = ref.marginal_cost_quadratic.mean() # not used currently
 			)
 
 			# remove the generator after the link version is created
 			n.remove('Generator', gens.index)
-		
+	
 	return n
 
 
