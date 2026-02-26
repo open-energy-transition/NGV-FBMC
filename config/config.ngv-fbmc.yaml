@@ -1,0 +1,60 @@
+run:
+  prefix: ""
+  name: "ngv-fbmc"
+
+scenario:
+  clusters:
+  - clustered
+  opts:
+  - ""
+  sector_opts:
+  - ""
+  planning_horizons:
+  - 2030 # approx average of the year range for our runs
+
+carrier_mapping:
+  Generator:
+    Load Shedding: load
+    biomass: biomass
+    engine: oil-heavy
+    geothermal: geothermal
+    nuclear: nuclear
+    offwind-dc: offwind-dc-fl-oh
+    oil: oil-heavy
+    solar: solar-pv-utility
+    waste: waste
+  Link:
+    Baseline Electricity (I&C) DSR reverse: battery discharger
+    Baseline Electricity (I&C) DSR shift: battery charger
+    Baseline Electricity (Residential) DSR reverse: battery discharger
+    Baseline Electricity (Residential) DSR shift: battery charger
+    Baseline Electricity unmanaged load: electricity distribution grid
+    EV DSR reverse: home battery discharger
+    EV DSR shift: home battery charger
+    EV unmanaged load: home battery charger
+    H2 Turbine: h2-ccgt
+    I&C Heat DSR reverse: battery discharger
+    I&C Heat DSR shift: battery charger
+    I&C Heat unmanaged load: electricity distribution grid
+    Residential Heat DSR reverse: battery discharger
+    Residential Heat DSR shift: battery charger
+    Residential Heat unmanaged load: electricity distribution grid
+    ev V2G: home battery discharger
+  Load:
+    '': electricity
+    Baseline Electricity: electricity
+    EV: electricity
+    H2: H2 exogenous demand
+    I&C Heat: electricity
+    Residential Heat: electricity
+  StorageUnit:
+    Battery Storage: battery
+    PHS: hydro-phs
+    hydro: hydro-reservoir
+  Store:
+    Baseline Electricity (I&C) DSR: battery
+    Baseline Electricity (Residential) DSR: battery
+    EV DSR: home battery
+    I&C Heat DSR: battery
+    Residential Heat DSR: battery
+    ev V2G: home battery
