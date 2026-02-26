@@ -71,37 +71,14 @@ rule run_phase01_model_as_rule:
             "config/config.ngv-iem.yaml",
         ],
     output:
-        network_2030=ngviemmodel(
-            "resources/ngv-iem/latest/networks/base_s_all___2030.nc"
+        forecast_errors=ngviemmodel(
+            "data/ngv_iem_errors/archive/2025-12-04_17-05/relative_errors.parquet"
         ),
-        network_noce_2030=ngviemmodel(
-            "resources/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
-        ),
-        network_lluk_2030=ngviemmodel(
-            "resources/ngv-iem/latest/networks/base_s_all_lluk__2030.nc"
-        ),
-        network_2040=ngviemmodel(
-            "resources/ngv-iem/latest/networks/base_s_all___2040.nc"
-        ),
-        network_noce_2040=ngviemmodel(
-            "resources/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
-        ),
-        network_lluk_2040=ngviemmodel(
-            "resources/ngv-iem/latest/networks/base_s_all_lluk__2040.nc"
-        ),
-        results_2030=ngviemmodel("results/ngv-iem/latest/networks/base_s_all___2030.nc"),
         results_noce_2030=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
         ),
-        results_lluk_2030=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all_lluk__2030.nc"
-        ),
-        results_2040=ngviemmodel("results/ngv-iem/latest/networks/base_s_all___2040.nc"),
         results_noce_2040=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
-        ),
-        results_lluk_2040=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all_lluk__2040.nc"
         ),
     shell:
         """
@@ -109,7 +86,6 @@ rule run_phase01_model_as_rule:
             --manifest-path={input.manifest} \
             --environment=ngv \
             snakemake \
-                --cores all  \
                 --snakefile modules/NGV-IEM/Snakefile \
                 --directory modules/NGV-IEM \
                 --configfile {input.overwrite_configfiles} \
