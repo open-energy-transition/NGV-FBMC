@@ -1,7 +1,9 @@
 from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
-include: "rules/common.smk"
+
+configfile: "config/config.ngv-fbmc.yaml"
+
 
 # Notes about limitations in integrating existing workflows as modules:
 # 1. Each module has its own configuration files that need to be loaded separately.
@@ -24,16 +26,31 @@ def _add_prefix(fn: str | list[str], prefix: str) -> str | list[str]:
         return [f"{prefix}{fn}" for f in fn]
 
 
+def _remove_prefix(fn: str | list[str], prefix: str) -> str | list[str]:
+    if isinstance(fn, str):
+        return fn.replace(prefix, "")
+    elif isinstance(fn, list):
+        return [f.replace(prefix, "") for f in fn]
+
+
 def gbdispatchmodel(
-    fn: str | list[str], prefix="modules/gb-dispatch-model/"
+    fn: str | list[str], prefix="modules/gb-dispatch-model/", remove_prefix=False
 ) -> str | list[str]:
     """Prefix filenames in either str or list[str] for the GB Dispatch Model relative location."""
-    return _add_prefix(fn, prefix)
+    if remove_prefix:
+        return _remove_prefix(fn, prefix)
+    else:
+        return _add_prefix(fn, prefix)
 
 
-def ngviemmodel(fn: str | list[str], prefix="modules/NGV-IEM/") -> str | list[str]:
+def ngviemmodel(
+    fn: str | list[str], prefix="modules/NGV-IEM/", remove_prefix=False
+) -> str | list[str]:
     """Prefix filenames in either str or list[str] for the NGV IEM relative location."""
-    return _add_prefix(fn, prefix)
+    if remove_prefix:
+        return _remove_prefix(fn, prefix)
+    else:
+        return _add_prefix(fn, prefix)
 
 
 # We create a rule to run this model standalone as a pixi task, rather than including it as a snakemake module
@@ -44,48 +61,76 @@ def ngviemmodel(fn: str | list[str], prefix="modules/NGV-IEM/") -> str | list[st
 rule run_phase01_model_as_rule:
     message:
         "Running parts of the phase 01 NGV-IEM model as preparation for the combined model."
+    params:
+        files=lambda wildcards, output: " ".join(
+            ngviemmodel(output, remove_prefix=True)
+        ),
     input:
         manifest=ngviemmodel("pixi.toml"),
+        overwrite_configfiles=[
+            "config/config.ngv-iem.yaml",
+        ],
     output:
-        network_2030="resources/ngv-iem/latest/networks/base_s_all___2030.nc",
-        network_noce_2030="resources/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc",
-        network_lluk_2030="resources/ngv-iem/latest/networks/base_s_all_lluk__2030.nc",
-        network_2040="resources/ngv-iem/latest/networks/base_s_all___2040.nc",
-        network_noce_2040="resources/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc",
-        network_lluk_2040="resources/ngv-iem/latest/networks/base_s_all_lluk__2040.nc",
-        results_2030="results/ngv-iem/latest/networks/base_s_all___2030.nc",
-        results_noce_2030="results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc",
-        results_lluk_2030="results/ngv-iem/latest/networks/base_s_all_lluk__2030.nc",
-        results_2040="results/ngv-iem/latest/networks/base_s_all___2040.nc",
-        results_noce_2040="results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc",
-        results_lluk_2040="results/ngv-iem/latest/networks/base_s_all_lluk__2040.nc",
+        forecast_errors=ngviemmodel(
+            "data/ngv_iem_errors/archive/2025-12-04_17-05/relative_errors.parquet"
+        ),
+        results_noce_2030=ngviemmodel(
+            "results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
+        ),
+        results_noce_2040=ngviemmodel(
+            "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
+        ),
     shell:
-        "pixi run --manifest-path={input.manifest} ngv"
+        """
+        pixi run \
+            --manifest-path={input.manifest} \
+            --environment=ngv \
+            snakemake \
+                --snakefile modules/NGV-IEM/Snakefile \
+                --directory modules/NGV-IEM \
+                --configfile {input.overwrite_configfiles} \
+                --keep-going \
+                --rerun-incomplete \
+                {params.files}
+        """
 
 
 rule run_gbdispatchmodel_as_rule:
     message:
         "Running parts of the GB Dispatch Model as preparation for the combined model."
+    params:
+        files=lambda wildcards, output: " ".join(
+            gbdispatchmodel(output, remove_prefix=True)
+        ),
     input:
         manifest=gbdispatchmodel("pixi.toml"),
         overwrite_configfiles=["config/config.gb-dispatch.yaml"],
     output:
-        network_2030="resources/GB/networks/HT/constrained_clustered/2030.nc",
-        network_2040="resources/GB/networks/HT/constrained_clustered/2040.nc",
-        results_dispatch_2030="results/GB/networks/HT/unconstrained_clustered/2030.nc",
-        results_dispatch_2040="results/GB/networks/HT/unconstrained_clustered/2040.nc",
+        network_2030=gbdispatchmodel(
+            "resources/GB/networks/HT/constrained_clustered/2030.nc"
+        ),
+        network_2040=gbdispatchmodel(
+            "resources/GB/networks/HT/constrained_clustered/2040.nc"
+        ),
+        results_dispatch_2030=gbdispatchmodel(
+            "results/GB/networks/HT/unconstrained_clustered/2030.nc"
+        ),
+        results_dispatch_2040=gbdispatchmodel(
+            "results/GB/networks/HT/unconstrained_clustered/2040.nc"
+        ),
     shell:
         """
         pixi run \
-            --manifest-path=modules/gb-dispatch-model/pixi.toml \
+            --manifest-path={input.manifest} \
             --environment=gb-model \
             snakemake \
-                --cores all \
+                --cores 1 \
                 --snakefile modules/gb-dispatch-model/Snakefile \
                 --directory modules/gb-dispatch-model \
                 --configfile {input.overwrite_configfiles} \
                 --keep-going \
-                {output} \
+                --rerun-incomplete \
+                {params.files}
         """
 
 
@@ -109,11 +154,12 @@ rule run_gbdispatchmodel_as_rule:
 # 4. Setup the redispatch logic
 # Use the logic from the GB Dispatch Model to run it on the combined networks
 
+
 rule prepare_scenario_IEM:
     message:
         "Preparing a combined model based on phase NGV-IEM model and GB Dispatch Model network for year {wildcards.year} (scenario: IEM - integrated energy market)."
     params:
-        carrier_map=config['carrier_mapping']
+        carrier_map=config["carrier_mapping"],
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
@@ -234,4 +280,3 @@ rule solve_redispatch:
         "logs/solve_redispatch/{scenario}/{year}.log",
     script:
         "scripts/solve_redispatch.py"
-

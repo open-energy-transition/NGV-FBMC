@@ -21,11 +21,11 @@
 
 * To run the default `gb-dispatch-model`, use:
   ```bash
-  pixi run gb-dispatch-model
+  <not yet implemented>
   ```
 * To run the default `NGV-IEM` model, use:
   ```bash
-  pixi run snakemake --cores all run_ngviem_model_as_rule
+  <not yet implemented>
   ```
 * To run the full model, use:
   ```bash
