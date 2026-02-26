@@ -1,3 +1,48 @@
 # Config file for setting up NGV-FBMC specific parameters
-# Must not be empty, else snakemake doesn't consider it a valid config file
-place: holder
+
+carrier_mapping:
+  Link:
+    EV unmanaged load: home battery charger
+    EV DSR shift: home battery charger
+    EV DSR reverse: home battery discharger
+    ev V2G: home battery discharger
+    H2 Turbine: h2-ccgt
+    Baseline Electricity unmanaged load: electricity distribution grid
+    Baseline Electricity (I&C) DSR shift: battery charger
+    Baseline Electricity (I&C) DSR reverse: battery discharger
+    Baseline Electricity (Residential) DSR shift: battery charger
+    Baseline Electricity (Residential) DSR reverse: battery discharger
+    I&C Heat unmanaged load: electricity distribution grid
+    I&C Heat DSR shift: battery charger
+    I&C Heat DSR reverse: battery discharger
+    Residential Heat unmanaged load: electricity distribution grid
+    Residential Heat DSR shift: battery charger
+    Residential Heat DSR reverse: battery discharger
+  Store:
+    EV DSR: home battery
+    ev V2G: home battery
+    Baseline Electricity (I&C) DSR: battery
+    Baseline Electricity (Residential) DSR: battery
+    I&C Heat DSR: battery
+    Residential Heat DSR: battery
+  StorageUnit:
+    hydro: hydro-reservoir
+    Battery Storage: battery
+    PHS: hydro-phs
+  Generator:
+    nuclear: nuclear
+    solar: solar-pv-utility
+    waste: waste
+    biomass: biomass
+    oil: oil-heavy
+    geothermal: geothermal
+    engine: oil-heavy
+    Load Shedding: load
+    offwind-dc: offwind-dc-fl-oh
+  Load:
+    "": electricity
+    EV: electricity
+    Baseline Electricity: electricity
+    Residential Heat: electricity
+    I&C Heat: electricity
+    H2: H2 exogenous demand
