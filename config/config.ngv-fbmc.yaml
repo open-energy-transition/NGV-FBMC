@@ -1,0 +1,3 @@
+# Config file for setting up NGV-FBMC specific parameters
+# Must not be empty, else snakemake doesn't consider it a valid config file
+place: holder

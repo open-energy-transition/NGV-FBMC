@@ -2,7 +2,7 @@ from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
 
-configfile: "config/config.yaml"
+configfile: "config/config.ngv-fbmc.yaml"
 
 
 # Notes about limitations in integrating existing workflows as modules:
