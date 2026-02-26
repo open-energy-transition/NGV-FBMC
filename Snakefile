@@ -164,7 +164,7 @@ rule prepare_scenario_IEM:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "resources/GB/networks/unconstrained_clustered/{year}.nc"
+            "resources/GB/networks/HT/unconstrained_clustered/{year}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{year}_no_ce.nc",
