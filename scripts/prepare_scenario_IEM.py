@@ -103,7 +103,7 @@ def merge_gb_tyndp(gb, eur, carrier_map):
     ].index
     gb.remove("lines", non_gb_lines)
 
-    gb.set_snapshots(eur.snapshots)
+    assert eur.snapshots.equals(gb.snapshots)
     res = eur.merge(gb, with_time=True)
 
     return res
