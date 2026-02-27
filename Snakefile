@@ -189,27 +189,14 @@ rule prepare_scenario_IEM:
         "scripts/prepare_scenario_IEM.py"
 
 
-rule prepare_dispatch:
-    message:
-        "Preparing redispatch for year {wildcards.year}."
-    input:
-        model="resources/dispatch/networks/IEM/{year}.nc",
-    output:
-        model="resources/dispatch/networks/IEM/{year}_copperplate_gb.nc",
-    log:
-        "logs/prepare_scenario_dispatch/{year}.log",
-    script:
-        "modules/gb-dispatch-model/scripts/gb_model/dispatch/prepare_unconstrained_network.py"
-
-
 rule prepare_scenario_TF:
     message:
         "Preparing model for uncertainty scenario based on combined model for year {year} (scenario: TF - trader forecast)."
     input:
-        _model="resources/dispatch/networks/IEM/{year}.nc",
+        model=rules.prepare_scenario_IEM.output.model,
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
     output:
-        model="resources/dispatch/networks/TF/{year}.nc",
+        model="resources/base/networks/TF/{year}.nc",
     log:
         "logs/prepare_scenario_TF/{year}.log",
     script:
@@ -223,7 +210,7 @@ rule prepare_scenario_SQ:
         model=rules.prepare_scenario_IEM.output.model,
         model_tf=rules.prepare_scenario_TF.output.model,
     output:
-        model="resources/dispatch/networks/SQ/{year}.nc",
+        model="resources/base/networks/SQ/{year}.nc",
         # For validation only:
         line_limits="resources/dispatch/line_limits/{year}.csv",
     log:
@@ -248,23 +235,36 @@ rule prepare_scenario_FBMC:
     message:
         "Preparing model for flow-based scenario based on combined model for year {wildcards.year} (scenario: FBMC - flow-based market coupling)."
     input:
-        model=rules.prepare_dispatch.output.model,
+        model=rules.prepare_scenario_IEM.output.model,
         ptdf="data/NGV-FBMC/ptdf/{year}.parquet",
         ram="data/NGV-FBMC/ram/{year}.parquet",
     output:
-        model="resources/dispatch/networks/FBMC/{year}.nc",
+        model="resources/base/networks/FBMC/{year}.nc",
     log:
         "logs/prepare_scenario_FBMC/{year}.log",
     script:
         "scripts/prepare_scenario_FBMC.py"
 
 
+rule prepare_dispatch:
+    message:
+        "Preparing dispatch for year {wildcards.year} and scenario {wildcards.scenario}."
+    input:
+        model="resources/base/networks/{scenario}/{year}.nc",
+    output:
+        model="resources/dispatch/networks/{scenario}/{year}.nc",
+    log:
+        "logs/prepare_dispatch/{scenario}/{year}.log",
+    script:
+        "scripts/prepare_unconstrained_network.py"
+
+
 rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.year} in scenario: {wildcards.scenario}."
     params:
-        solving=config["solving"],
-        foresight=config["foresight"],
+        # solving=config["solving"],
+        # foresight=config["foresight"],
         # co2_sequestration_potential=config_provider(
         #     "sector", "co2_sequestration_potential", default=200
         # ),
@@ -294,13 +294,13 @@ rule solve_dispatch:
         memory=RESULTS + "logs/solve_network/{scenario}/{year}_memory.log",
         python=RESULTS + "logs/solve_network/{scenario}/{year}_python.log",
     benchmark:
-        "results/dispatch/benchmarks/solve_network/{fes_scenario}/unconstrained_clustered/{year}"
-    threads: solver_threads
-    resources:
-        mem_mb=config["solving"]["mem_mb"],
-        runtime=config["solving"]["runtime"],
-    shadow:
-        shadow_config
+        "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{year}"
+    # threads: solver_threads
+    # resources:
+    #     mem_mb=config["solving"]["mem_mb"],
+    #     runtime=config["solving"]["runtime"],
+    # shadow:
+    #     shadow_config
     script:
         "modules/gb-dispatch-model/scripts/solve_network.py"
 
