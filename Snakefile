@@ -1,7 +1,10 @@
 from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
-
+configfile: "config/config.default.yaml"
+configfile: "config/plotting.default.yaml"
+configfile: "config/benchmarking.default.yaml"
+configfile: "config/config.tyndp.yaml"
 configfile: "config/config.ngv-fbmc.yaml"
 
 
