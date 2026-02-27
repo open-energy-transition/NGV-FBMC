@@ -3,4 +3,13 @@
 
 # Need an entry such that Snakemake considers this a valid yaml file
 # Can be removed once there are other actual entries in this file
-place: holder
+run:
+  prefix: "ngv-iem"
+  name: "year"
+
+uncertainty_scenarios:
+- trader-forecast
+
+snapshots:
+  start: "2009-01-01"
+  end: "2010-01-01"
