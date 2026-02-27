@@ -106,6 +106,9 @@ rule run_gbdispatchmodel_as_rule:
         manifest=gbdispatchmodel("pixi.toml"),
         overwrite_configfiles=["config/config.gb-dispatch.yaml"],
     output:
+        bids_and_offers=gbdispatchmodel(
+            "resources/GB/gb-model/HT/bid_offer_multipliers.csv"
+        ),
         network_2030=gbdispatchmodel(
             "resources/GB/networks/HT/constrained_clustered/2030.nc"
         ),
@@ -162,7 +165,7 @@ rule prepare_scenario_IEM:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "resources/GB/networks/unconstrained_clustered/{year}.nc"
+            "results/GB/networks/HT/unconstrained_clustered/{year}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{year}_no_ce.nc"
@@ -241,12 +244,14 @@ rule solve_dispatch:
     input:
         model="resources/dispatch/networks/{scenario}/{year}.nc",
         ptdf=branch(
-            rules.prepare_scenario_FBMC.input.ptdf,
             lambda wildcards: wildcards.scenario == "FBMC",
+            "data/NGV-FBMC/ptdf/{year}.parquet",
+            "",
         ),
         ram=branch(
-            rules.prepare_scenario_FBMC.input.ram,
             lambda wildcards: wildcards.scenario == "FBMC",
+            "data/NGV-FBMC/ram/{year}.parquet",
+            "",
         ),
     output:
         dispatch_results="results/dispatch/networks/{scenario}/{year}.nc",
@@ -256,12 +261,31 @@ rule solve_dispatch:
         "scripts/solve_dispatch.py"
 
 
+rule calc_interconnector_bid_offer_profile:
+    message:
+        "Calculate interconnector bid/offer profiles"
+    input:
+        bids_and_offers=gbdispatchmodel(
+            "resources/GB/gb-model/HT/bid_offer_multipliers.csv"
+        ),
+        unconstrained_result="results/dispatch/networks/{scenario}/{year}.nc",
+    output:
+        bid_offer_profile="resources/interconnector_bid_offer_profile/{scenario}/{year}.csv",
+    log:
+        "logs/calc_interconnector_bid_offer_profile/{scenario}/{year}.log",
+    script:
+        gbdispatchmodel(
+            "scripts/gb_model/redispatch/calc_interconnector_bid_offer_profile.py"
+        )
+
+
 rule prepare_redispatch:
     message:
         "Preparing redispatch for year {wildcards.year} in scenario: {wildcards.scenario}."
     input:
         dispatch_results="results/dispatch/networks/{scenario}/{year}.nc",
         model="resources/dispatch/networks/{scenario}/{year}.nc",
+        bid_offer_profile=rules.calc_interconnector_bid_offer_profile.output.bid_offer_profile,
     output:
         redispatch_model="resources/dispatch/redispatch/{scenario}/{year}.nc",
     log:
@@ -276,7 +300,7 @@ rule solve_redispatch:
     input:
         redispatch_model=rules.prepare_redispatch.output.redispatch_model,
     output:
-        redispatch_results="results/dispatch/redispatch/{scenario}/{year}.nc",
+        redispatch_results="results/redispatch/networks/{scenario}/{year}.nc",
     log:
         "logs/solve_redispatch/{scenario}/{year}.log",
     script:
