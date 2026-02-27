@@ -263,7 +263,19 @@ rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.year} in scenario: {wildcards.scenario}."
     params:
-        solving=config['solving']
+        solving=config['solving'],
+        foresight=config["foresight"],
+        # co2_sequestration_potential=config_provider(
+        #     "sector", "co2_sequestration_potential", default=200
+        # ),
+        # custom_extra_functionality=Path(workflow.snakefile).parent
+        # / scripts("gb_model/dispatch/custom_constraints.py"),
+        # nuclear_max_annual_capacity_factor=config["conventional"]["nuclear"][
+        #     "max_annual_capacity_factor"
+        # ],
+        # nuclear_min_annual_capacity_factor=config["conventional"]["nuclear"][
+        #     "min_annual_capacity_factor"
+        # ],
     input:
         model="resources/dispatch/networks/{scenario}/{year}.nc",
         ptdf=branch(
@@ -275,11 +287,24 @@ rule solve_dispatch:
             lambda wildcards: wildcards.scenario == "FBMC",
         ),
     output:
-        dispatch_results="results/dispatch/networks/{scenario}/{year}.nc",
+        network="results/dispatch/networks/{scenario}/{year}.nc",
+        config="results/dispatch/configs/{scenario}/{year}.yaml",
     log:
-        "logs/solve_dispatch/{scenario}/{year}.log",
+        solver="results/dispatch/logs/solve_network/{scenario}/unconstrained_clustered/{year}_solver.log",
+        memory=RESULTS
+        + "logs/solve_network/{scenario}/{year}_memory.log",
+        python=RESULTS
+        + "logs/solve_network/{scenario}/{year}_python.log",
+    benchmark:
+        "results/dispatch/benchmarks/solve_network/{fes_scenario}/unconstrained_clustered/{year}"
+    threads: solver_threads
+    resources:
+        mem_mb=config["solving"]["mem_mb"],
+        runtime=config["solving"]["runtime"]
+    shadow:
+        shadow_config
     script:
-        "scripts/solve_dispatch.py"
+        "modules/gb-dispatch-model/scripts/solve_network.py"
 
 
 rule prepare_redispatch:
