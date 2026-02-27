@@ -155,18 +155,18 @@ rule run_gbdispatchmodel_as_rule:
 # 4. Setup the redispatch logic
 # Use the logic from the GB Dispatch Model to run it on the combined networks
 
-RESULTS = 'results/'
+RESULTS = "results/"
+
 
 rule all_IEM:
     message:
         "Collecting IEM related files"
     input:
         lambda w: expand(
-            (
-                RESULTS + 'dispatch/networks/IEM/{planning_horizons}.nc'
-            ),
+            (RESULTS + "dispatch/networks/IEM/{planning_horizons}.nc"),
             **config["scenario"],
         ),
+
 
 rule prepare_scenario_IEM:
     message:
@@ -191,14 +191,14 @@ rule prepare_scenario_IEM:
 
 
 rule prepare_dispatch:
-    message: 
+    message:
         "Preparing redispatch for year {wildcards.year}."
     input:
         model="resources/dispatch/networks/IEM/{year}.nc",
     output:
-        model="resources/dispatch/networks/IEM/{year}_copperplate_gb.nc"
+        model="resources/dispatch/networks/IEM/{year}_copperplate_gb.nc",
     log:
-        "logs/prepare_scenario_dispatch/{year}.log"
+        "logs/prepare_scenario_dispatch/{year}.log",
     script:
         "modules/gb-dispatch-model/scripts/gb_model/dispatch/prepare_unconstrained_network.py"
 
@@ -259,11 +259,12 @@ rule prepare_scenario_FBMC:
     script:
         "scripts/prepare_scenario_FBMC.py"
 
+
 rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.year} in scenario: {wildcards.scenario}."
     params:
-        solving=config['solving'],
+        solving=config["solving"],
         foresight=config["foresight"],
         # co2_sequestration_potential=config_provider(
         #     "sector", "co2_sequestration_potential", default=200
@@ -291,16 +292,14 @@ rule solve_dispatch:
         config="results/dispatch/configs/{scenario}/{year}.yaml",
     log:
         solver="results/dispatch/logs/solve_network/{scenario}/unconstrained_clustered/{year}_solver.log",
-        memory=RESULTS
-        + "logs/solve_network/{scenario}/{year}_memory.log",
-        python=RESULTS
-        + "logs/solve_network/{scenario}/{year}_python.log",
+        memory=RESULTS + "logs/solve_network/{scenario}/{year}_memory.log",
+        python=RESULTS + "logs/solve_network/{scenario}/{year}_python.log",
     benchmark:
         "results/dispatch/benchmarks/solve_network/{fes_scenario}/unconstrained_clustered/{year}"
     threads: solver_threads
     resources:
         mem_mb=config["solving"]["mem_mb"],
-        runtime=config["solving"]["runtime"]
+        runtime=config["solving"]["runtime"],
     shadow:
         shadow_config
     script:
