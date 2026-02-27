@@ -249,10 +249,14 @@ rule prepare_scenario_FBMC:
 rule prepare_dispatch:
     message:
         "Preparing dispatch for year {wildcards.year} and scenario {wildcards.scenario}."
+    params:
+        # Important: Disable GB model load shedding overwrite with this setting
+        # Load shedding is handled elsewhere
+        load_shedding_cost_above_marginal=None,
     input:
-        model="resources/base/networks/{scenario}/{year}.nc",
+        network="resources/base/networks/{scenario}/{year}.nc",
     output:
-        model="resources/dispatch/networks/{scenario}/{year}.nc",
+        network="resources/dispatch/networks/{scenario}/{year}.nc",
     log:
         "logs/prepare_dispatch/{scenario}/{year}.log",
     script:
