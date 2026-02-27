@@ -4,13 +4,13 @@ run:
 
 scenario:
   clusters:
-  - clustered
+    - clustered
   opts:
-  - ""
+    - ""
   sector_opts:
-  - ""
+    - ""
   planning_horizons:
-  - 2030 # approx average of the year range for our runs
+    - 2030 # approx average of the year range for our runs
 
 carrier_mapping:
   Generator:
@@ -43,7 +43,7 @@ carrier_mapping:
     Residential Heat unmanaged load: electricity distribution grid
     ev V2G: home battery discharger
   Load:
-    '': electricity
+    "": electricity
     Baseline Electricity: electricity
     EV: electricity
     H2: H2 exogenous demand

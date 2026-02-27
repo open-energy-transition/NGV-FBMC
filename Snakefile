@@ -1,6 +1,7 @@
 from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
+
 configfile: "config/config.default.yaml"
 configfile: "config/plotting.default.yaml"
 configfile: "config/benchmarking.default.yaml"
@@ -79,6 +80,9 @@ rule run_phase01_model_as_rule:
         ),
         results_noce_2030=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
+        ),
+        offshore_zone_trajectories=ngviemmodel(
+            "resources/ngv-iem/latest/offshore_zone_trajectories.csv"
         ),
         # results_noce_2040=ngviemmodel(
         #     "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
@@ -270,45 +274,58 @@ rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.year} in scenario: {wildcards.scenario}."
     params:
-        # solving=config["solving"],
-        # foresight=config["foresight"],
-        # co2_sequestration_potential=config_provider(
-        #     "sector", "co2_sequestration_potential", default=200
-        # ),
-        # custom_extra_functionality=Path(workflow.snakefile).parent
-        # / scripts("gb_model/dispatch/custom_constraints.py"),
-        # nuclear_max_annual_capacity_factor=config["conventional"]["nuclear"][
-        #     "max_annual_capacity_factor"
-        # ],
-        # nuclear_min_annual_capacity_factor=config["conventional"]["nuclear"][
-        #     "min_annual_capacity_factor"
-        # ],
+        solving=config["solving"],
+        foresight=config["foresight"],
+        co2_sequestration_potential=config_provider(
+            "sector", "co2_sequestration_potential", default=200
+        ),
+        renewable_carriers=config["electricity"]["renewable_carriers"],
+        # Only the GB dispatch model defines custom extra functionality
+        custom_extra_functionality=gbdispatchmodel(
+            "scripts/gb_model/dispatch/custom_constraints.py"
+        ),
+        # Files required for the custom extra functionality of the GB dispatch model
+        # (they are read as params, not as input files for whatever reasons)
+        # TODO make sure logic is in solve_network
+        nuclear_max_annual_capacity_factor=config["conventional"]["nuclear"][
+            "max_annual_capacity_factor"
+        ],
+        nuclear_min_annual_capacity_factor=config["conventional"]["nuclear"][
+            "min_annual_capacity_factor"
+        ],
     input:
-        model="resources/dispatch/networks/{scenario}/{year}.nc",
+        network="resources/dispatch/networks/{scenario}/{year}.nc",
+        # TODO - add logic
         ptdf=branch(
-            rules.prepare_scenario_FBMC.input.ptdf,
             lambda wildcards: wildcards.scenario == "FBMC",
+            raise(NotImplementedError("FBMC logic not implemented.")),
+            # rules.prepare_scenario_FBMC.input.ptdf,
         ),
         ram=branch(
-            rules.prepare_scenario_FBMC.input.ram,
             lambda wildcards: wildcards.scenario == "FBMC",
+            raise(NotImplementedError("FBMC logic not implemented.")),
+            # rules.prepare_scenario_FBMC.input.ram,
         ),
+        # TYNDP specific
+        # TODO make sure logic is in solve_network
+        offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
         network="results/dispatch/networks/{scenario}/{year}.nc",
         config="results/dispatch/configs/{scenario}/{year}.yaml",
     log:
-        solver="results/dispatch/logs/solve_network/{scenario}/unconstrained_clustered/{year}_solver.log",
-        memory=RESULTS + "logs/solve_network/{scenario}/{year}_memory.log",
-        python=RESULTS + "logs/solve_network/{scenario}/{year}_python.log",
+        solver="results/dispatch/logs/solve_network/{scenario}/{year}_solver.log",
+        memory="results/dispatch/logs/solve_network/{scenario}/{year}_memory.log",
+        python="results/dispatch/logs/solve_network/{scenario}/{year}_python.log",
     benchmark:
         "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{year}"
-    # threads: solver_threads
-    # resources:
-    #     mem_mb=config["solving"]["mem_mb"],
-    #     runtime=config["solving"]["runtime"],
-    # shadow:
-    #     shadow_config
+    threads: config["solving"]["solver_options"]["threads"]
+    resources:
+        mem_mb=config["solving"]["mem_mb"],
+        runtime=config["solving"]["runtime"],
+    shadow:
+        config["run"]["use_shadow_directory"]
     script:
+        # TODO: Compare these scripts
         "modules/gb-dispatch-model/scripts/solve_network.py"
 
 
