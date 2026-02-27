@@ -77,15 +77,16 @@ rule run_phase01_model_as_rule:
         results_noce_2030=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
         ),
-        results_noce_2040=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
-        ),
+        # results_noce_2040=ngviemmodel(
+        #     "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
+        # ),
     shell:
         """
         pixi run \
             --manifest-path={input.manifest} \
             --environment=ngv \
             snakemake \
+                --cores 1 \
                 --snakefile modules/NGV-IEM/Snakefile \
                 --directory modules/NGV-IEM \
                 --configfile {input.overwrite_configfiles} \
@@ -154,6 +155,18 @@ rule run_gbdispatchmodel_as_rule:
 # 4. Setup the redispatch logic
 # Use the logic from the GB Dispatch Model to run it on the combined networks
 
+RESULTS = 'results/'
+
+rule all_IEM:
+    message:
+        "Collecting IEM related files"
+    input:
+        lambda w: expand(
+            (
+                RESULTS + 'dispatch/networks/IEM/{planning_horizons}.nc'
+            ),
+            **config["scenario"],
+        ),
 
 rule prepare_scenario_IEM:
     message:
@@ -177,9 +190,22 @@ rule prepare_scenario_IEM:
         "scripts/prepare_scenario_IEM.py"
 
 
+rule prepare_dispatch:
+    message: 
+        "Preparing redispatch for year {wildcards.year}."
+    input:
+        model="resources/dispatch/networks/IEM/{year}.nc",
+    output:
+        model="resources/dispatch/networks/IEM/{year}_copperplate_gb.nc"
+    log:
+        "logs/prepare_scenario_dispatch/{year}.log"
+    script:
+        "modules/gb-dispatch-model/scripts/gb_model/dispatch/prepare_unconstrained_network.py"
+
+
 rule prepare_scenario_TF:
     message:
-        "Preparing model for uncertainty scenario based on combined model for year {wildcards.year} (scenario: TF - trader forecast)."
+        "Preparing model for uncertainty scenario based on combined model for year {year} (scenario: TF - trader forecast)."
     input:
         _model="resources/dispatch/networks/IEM/{year}.nc",
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
@@ -223,7 +249,7 @@ rule prepare_scenario_FBMC:
     message:
         "Preparing model for flow-based scenario based on combined model for year {wildcards.year} (scenario: FBMC - flow-based market coupling)."
     input:
-        model=rules.prepare_scenario_IEM.output.model,
+        model=rules.prepare_dispatch.output.model,
         ptdf="data/NGV-FBMC/ptdf/{year}.parquet",
         ram="data/NGV-FBMC/ram/{year}.parquet",
     output:
@@ -233,10 +259,11 @@ rule prepare_scenario_FBMC:
     script:
         "scripts/prepare_scenario_FBMC.py"
 
-
 rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.year} in scenario: {wildcards.scenario}."
+    params:
+        solving=config['solving']
     input:
         model="resources/dispatch/networks/{scenario}/{year}.nc",
         ptdf=branch(
