@@ -23,6 +23,8 @@ carrier_mapping:
     oil: oil-heavy
     solar: solar-pv-utility
     waste: waste
+    CCGT: CCGT
+    OCGT: OCGT
   Link:
     Baseline Electricity (I&C) DSR reverse: battery discharger
     Baseline Electricity (I&C) DSR shift: battery charger
@@ -58,3 +60,16 @@ carrier_mapping:
     I&C Heat DSR: battery
     Residential Heat DSR: battery
     ev V2G: home battery
+
+solving:
+  options:
+    load_shedding: 4e3
+  solver:
+    name: gurobi
+    options: gurobi-default
+
+  solver_options:
+    gurobi-default:
+      BarConvTol: 1.e-6
+    cplex-default:
+      barrier.convergetol: 1.e-6

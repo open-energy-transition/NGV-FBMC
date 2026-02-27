@@ -1,7 +1,10 @@
 from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
-
+configfile: "config/config.default.yaml"
+configfile: "config/plotting.default.yaml"
+configfile: "config/benchmarking.default.yaml"
+configfile: "config/config.tyndp.yaml"
 configfile: "config/config.ngv-fbmc.yaml"
 
 
@@ -77,9 +80,9 @@ rule run_phase01_model_as_rule:
         results_noce_2030=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
         ),
-        results_noce_2040=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
-        ),
+        # results_noce_2040=ngviemmodel(
+        #     "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
+        # ),
     shell:
         """
         pixi run \
@@ -154,6 +157,18 @@ rule run_gbdispatchmodel_as_rule:
 # 4. Setup the redispatch logic
 # Use the logic from the GB Dispatch Model to run it on the combined networks
 
+RESULTS = "results/"
+
+
+rule all_IEM:
+    message:
+        "Collecting IEM related files"
+    input:
+        lambda w: expand(
+            (RESULTS + "dispatch/networks/IEM/{planning_horizons}.nc"),
+            **config["scenario"],
+        ),
+
 
 rule prepare_scenario_IEM:
     message:
@@ -179,12 +194,12 @@ rule prepare_scenario_IEM:
 
 rule prepare_scenario_TF:
     message:
-        "Preparing model for uncertainty scenario based on combined model for year {wildcards.year} (scenario: TF - trader forecast)."
+        "Preparing model for uncertainty scenario based on combined model for year {year} (scenario: TF - trader forecast)."
     input:
-        _model="resources/dispatch/networks/IEM/{year}.nc",
+        model=rules.prepare_scenario_IEM.output.model,
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
     output:
-        model="resources/dispatch/networks/TF/{year}.nc",
+        model="resources/base/networks/TF/{year}.nc",
     log:
         "logs/prepare_scenario_TF/{year}.log",
     script:
@@ -198,7 +213,7 @@ rule prepare_scenario_SQ:
         model=rules.prepare_scenario_IEM.output.model,
         model_tf=rules.prepare_scenario_TF.output.model,
     output:
-        model="resources/dispatch/networks/SQ/{year}.nc",
+        model="resources/base/networks/SQ/{year}.nc",
         # For validation only:
         line_limits="resources/dispatch/line_limits/{year}.csv",
     log:
@@ -227,16 +242,47 @@ rule prepare_scenario_FBMC:
         ptdf="data/NGV-FBMC/ptdf/{year}.parquet",
         ram="data/NGV-FBMC/ram/{year}.parquet",
     output:
-        model="resources/dispatch/networks/FBMC/{year}.nc",
+        model="resources/base/networks/FBMC/{year}.nc",
     log:
         "logs/prepare_scenario_FBMC/{year}.log",
     script:
         "scripts/prepare_scenario_FBMC.py"
 
 
+rule prepare_dispatch:
+    message:
+        "Preparing dispatch for year {wildcards.year} and scenario {wildcards.scenario}."
+    params:
+        # Important: Disable GB model load shedding overwrite with this setting
+        # Load shedding is handled elsewhere
+        load_shedding_cost_above_marginal=None,
+    input:
+        network="resources/base/networks/{scenario}/{year}.nc",
+    output:
+        network="resources/dispatch/networks/{scenario}/{year}.nc",
+    log:
+        "logs/prepare_dispatch/{scenario}/{year}.log",
+    script:
+        "scripts/prepare_unconstrained_network.py"
+
+
 rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.year} in scenario: {wildcards.scenario}."
+    params:
+        # solving=config["solving"],
+        # foresight=config["foresight"],
+        # co2_sequestration_potential=config_provider(
+        #     "sector", "co2_sequestration_potential", default=200
+        # ),
+        # custom_extra_functionality=Path(workflow.snakefile).parent
+        # / scripts("gb_model/dispatch/custom_constraints.py"),
+        # nuclear_max_annual_capacity_factor=config["conventional"]["nuclear"][
+        #     "max_annual_capacity_factor"
+        # ],
+        # nuclear_min_annual_capacity_factor=config["conventional"]["nuclear"][
+        #     "min_annual_capacity_factor"
+        # ],
     input:
         model="resources/dispatch/networks/{scenario}/{year}.nc",
         ptdf=branch(
@@ -248,11 +294,22 @@ rule solve_dispatch:
             lambda wildcards: wildcards.scenario == "FBMC",
         ),
     output:
-        dispatch_results="results/dispatch/networks/{scenario}/{year}.nc",
+        network="results/dispatch/networks/{scenario}/{year}.nc",
+        config="results/dispatch/configs/{scenario}/{year}.yaml",
     log:
-        "logs/solve_dispatch/{scenario}/{year}.log",
+        solver="results/dispatch/logs/solve_network/{scenario}/unconstrained_clustered/{year}_solver.log",
+        memory=RESULTS + "logs/solve_network/{scenario}/{year}_memory.log",
+        python=RESULTS + "logs/solve_network/{scenario}/{year}_python.log",
+    benchmark:
+        "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{year}"
+    # threads: solver_threads
+    # resources:
+    #     mem_mb=config["solving"]["mem_mb"],
+    #     runtime=config["solving"]["runtime"],
+    # shadow:
+    #     shadow_config
     script:
-        "scripts/solve_dispatch.py"
+        "modules/gb-dispatch-model/scripts/solve_network.py"
 
 
 rule prepare_redispatch:
