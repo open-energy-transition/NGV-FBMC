@@ -15,7 +15,7 @@ scenario:
 carrier_mapping:
   Generator:
     Load Shedding: load
-    biomass: biomass
+    biomass: solid biomass
     engine: oil-heavy
     geothermal: geothermal
     nuclear: nuclear

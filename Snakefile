@@ -86,6 +86,7 @@ rule run_phase01_model_as_rule:
             --manifest-path={input.manifest} \
             --environment=ngv \
             snakemake \
+                --cores all \
                 --snakefile modules/NGV-IEM/Snakefile \
                 --directory modules/NGV-IEM \
                 --configfile {input.overwrite_configfiles} \
