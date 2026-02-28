@@ -107,11 +107,17 @@ rule run_gbdispatchmodel_as_rule:
         manifest=gbdispatchmodel("pixi.toml"),
         overwrite_configfiles=["config/config.gb-dispatch.yaml"],
     output:
-        network_2030=gbdispatchmodel(
+        network_dispatch_2030=gbdispatchmodel(
             "resources/GB/networks/HT/constrained_clustered/2030.nc"
         ),
-        network_2040=gbdispatchmodel(
+        network_dispatch_2040=gbdispatchmodel(
             "resources/GB/networks/HT/constrained_clustered/2040.nc"
+        ),
+        network_redispatch_2030=gbdispatchmodel(
+            "resources/GB/networks/HT/unconstrained_clustered/2030.nc"
+        ),
+        network_redispatch_2040=gbdispatchmodel(
+            "resources/GB/networks/HT/unconstrained_clustered/2040.nc"
         ),
         results_dispatch_2030=gbdispatchmodel(
             "results/GB/networks/HT/unconstrained_clustered/2030.nc"
@@ -171,7 +177,7 @@ rule prepare_scenario_IEM:
             "results/ngv-iem/latest/networks/base_s_all___{year}_no_ce.nc",
         ),
     output:
-        model="resources/dispatch/networks/IEM/{year}.nc",
+        model="resources/base/networks/IEM/{year}.nc",
     log:
         "logs/prepare_scenario_IEM/{year}.log",
     script:
@@ -181,11 +187,13 @@ rule prepare_scenario_IEM:
 rule prepare_scenario_TF:
     message:
         "Preparing model for uncertainty scenario based on combined model for year {wildcards.year} (scenario: TF - trader forecast)."
+    params:
+        forecast_errors=config["forecast_errors"],
     input:
-        _model="resources/dispatch/networks/IEM/{year}.nc",
+        model=rules.prepare_scenario_IEM.output.model,
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
     output:
-        model="resources/dispatch/networks/TF/{year}.nc",
+        model="resources/base/networks/TF/{year}.nc",
     log:
         "logs/prepare_scenario_TF/{year}.log",
     script:
@@ -195,13 +203,14 @@ rule prepare_scenario_TF:
 rule prepare_scenario_SQ:
     message:
         "Preparing model for status quo scenario based on combined model for year {wildcards.year} (scenario: SQ - status quo)."
+    params:
+        explicit_allocation=config["explicit_allocation"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
         model_tf=rules.prepare_scenario_TF.output.model,
     output:
-        model="resources/dispatch/networks/SQ/{year}.nc",
-        # For validation only:
-        line_limits="resources/dispatch/line_limits/{year}.csv",
+        model="resources/base/networks/SQ/{year}.nc",
+        line_limits="resources/base/line_limits/{year}.csv",
     log:
         "logs/prepare_scenario_SQ/{year}.log",
     script:
@@ -228,7 +237,7 @@ rule prepare_scenario_FBMC:
         ptdf="data/NGV-FBMC/ptdf/{year}.parquet",
         ram="data/NGV-FBMC/ram/{year}.parquet",
     output:
-        model="resources/dispatch/networks/FBMC/{year}.nc",
+        model="resources/base/networks/FBMC/{year}.nc",
     log:
         "logs/prepare_scenario_FBMC/{year}.log",
     script:
@@ -261,7 +270,7 @@ rule prepare_redispatch:
         "Preparing redispatch for year {wildcards.year} in scenario: {wildcards.scenario}."
     input:
         dispatch_results="results/dispatch/networks/{scenario}/{year}.nc",
-        model="resources/dispatch/networks/{scenario}/{year}.nc",
+        model="resources/base/networks/{scenario}/{year}.nc",
     output:
         redispatch_model="resources/dispatch/redispatch/{scenario}/{year}.nc",
     log:
