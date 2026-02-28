@@ -2,16 +2,6 @@ run:
   prefix: ""
   name: "ngv-fbmc"
 
-scenario:
-  clusters:
-    - clustered
-  opts:
-    - ""
-  sector_opts:
-    - ""
-  planning_horizons:
-    - 2030 # approx average of the year range for our runs
-
 carrier_mapping:
   Generator:
     Load Shedding: load
@@ -64,6 +54,7 @@ carrier_mapping:
 solving:
   options:
     load_shedding: 4e3
+    noisy_costs: False # Upstream models already run solve_network once, so no need to add noise here again
   solver:
     name: gurobi
     options: gurobi-default
