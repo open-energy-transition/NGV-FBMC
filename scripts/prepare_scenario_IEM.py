@@ -244,7 +244,6 @@ if __name__ == "__main__":
     n_eur = pypsa.Network(snakemake.input.iem_model)
 
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
-    breakpoint()
     n_merged = add_waste_element(n_gb, n_merged)
     n_merged = add_co2_multilink(n_merged, n_eur, carrier_map)
     # implementation TBD
