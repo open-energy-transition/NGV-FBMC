@@ -120,6 +120,7 @@ def merge_gb_tyndp(
 def add_waste_element(
     n_gb: pypsa.Network,
     n_merged: pypsa.Network,
+    planning_horizon: int,
 ) -> pypsa.Network:
     """
     Adds a global source of waste to the TYNDP model.
@@ -130,13 +131,29 @@ def add_waste_element(
         The GB model, used to get the assumptions for waste generation and costs
     n_merged : pypsa.Network
         The merged model, to which the waste element will be added.
+    planning_horizon : int
+        The planning horizon, used to determine the cost assumptions for waste generation.
     """
+    # Source for "waste" as fuel
     n_merged.add(
         "Bus",
         name="EU waste",
         carrier="waste",
         unit="MWh_LHV",
         location="EU",
+    )
+    n_merged.add(
+        "Generator",
+        name="EU waste",
+        bus="EU waste",
+        carrier="waste",
+        p_nom_extendable=True,
+        marginal_cost={
+            2030: 19.0145,
+            2040: 21.131,
+        }[
+            planning_horizon
+        ],  # Costs for waste as fuel from fes_powerplants_inc_tech_data.csv
     )
 
     ref_waste_gens = n_gb.generators[n_gb.generators.carrier == "waste"]
@@ -269,7 +286,9 @@ if __name__ == "__main__":
     n_eur = pypsa.Network(snakemake.input.iem_model)
 
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
-    n_merged = add_waste_element(n_gb, n_merged)
+    n_merged = add_waste_element(
+        n_gb, n_merged, int(snakemake.wildcards.planning_horizon)
+    )
     n_merged = add_co2_multilink(n_merged, n_eur, carrier_map)
     # implementation TBD
     # n_merged = align_tech_econ_assumptions(n_merged, n_eur, carrier_map)
