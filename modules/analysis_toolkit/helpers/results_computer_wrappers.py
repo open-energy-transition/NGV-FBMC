@@ -59,20 +59,41 @@ def metric(func: Callable[..., Any]):
                 # saved_kwargs is not used by external callers in this design, but keep for internal convenience
                 self._saved_kwargs = dict(saved_kwargs) if saved_kwargs else {}
 
-            def sq(self, **kwargs):
-                return self._rc._sq(lambda n: self._f(n, **kwargs))
+            def sq_dispatch(self, **kwargs):
+                return self._rc._sq_dispatch(lambda n: self._f(n, **kwargs))
 
-            def iem(self, **kwargs):
-                return self._rc._iem(lambda n: self._f(n, **kwargs))
+            def iem_dispatch(self, **kwargs):
+                return self._rc._iem_dispatch(lambda n: self._f(n, **kwargs))
 
-            def iem_fb(self, **kwargs):
-                return self._rc._tf(lambda n: self._f(n, **kwargs))
+            def iem_fb_dispatch(self, **kwargs):
+                return self._rc._iem_fb_dispatch(lambda n: self._f(n, **kwargs))
 
-            def diff(self, **kwargs):
-                return self._rc._diff(lambda n: self._f(n, **kwargs))
+            def sq_redispatch(self, **kwargs):
+                return self._rc._sq_redispatch(lambda n: self._f(n, **kwargs))
 
-            def compare(self, **kwargs):
-                return self._rc._compare(lambda n: self._f(n, **kwargs))
+            def iem_redispatch(self, **kwargs):
+                return self._rc._iem_redispatch(lambda n: self._f(n, **kwargs))
+
+            def iem_fb_redispatch(self, **kwargs):
+                return self._rc._iem_fb_redispatch(lambda n: self._f(n, **kwargs))
+
+            def diff_sq(self, **kwargs):
+                return self._rc._diff_sq(lambda n: self._f(n, **kwargs))
+
+            def diff_iem(self, **kwargs):
+                return self._rc._diff_iem(lambda n: self._f(n, **kwargs))
+
+            def diff_iem_fb(self, **kwargs):
+                return self._rc._diff_iem_fb(lambda n: self._f(n, **kwargs))
+
+            def compare_dispatch(self, **kwargs):
+                return self._rc._compare_dispatch(lambda n: self._f(n, **kwargs))
+
+            def compare_redispatch(self, **kwargs):
+                return self._rc._compare_redispatch(lambda n: self._f(n, **kwargs))
+
+            def compare_diff(self, **kwargs):
+                return self._rc._compare_diff(lambda n: self._f(n, **kwargs))
 
             def __call__(self, *args, **kwargs):
                 # Allowed: called with a Network (optionally with kwargs) -> compute and return result

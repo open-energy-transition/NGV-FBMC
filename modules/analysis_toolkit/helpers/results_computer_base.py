@@ -1,10 +1,9 @@
-from typing import Callable, Any, Literal
+from typing import Callable, Any
 import pypsa
 import pandas as pd
 
-from .constants import GROUPBY_OPTIONS
-from .helpers.results_computer_wrappers import NetworkSelector, metric
-from .filepaths import get_networks_for_year
+from config.constants import GROUPBY_OPTIONS
+from results_computer_wrappers import NetworkSelector, metric
 
 
 class ResultsComputerBase:

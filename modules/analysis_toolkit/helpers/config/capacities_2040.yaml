@@ -1,0 +1,23 @@
+etys_boundary_capacities: # capacities taken from CT scenario, year 2040
+    B3b: 400
+    B4:  10500
+    B5:  13100
+    B6:  24300
+    B7a: 28700
+    B8:  33900
+    B9:  28800
+    B0:  3400
+    EC5: 11300
+    LE1: 21300
+    B13: 6500
+    SC1.5: 9400
+    SW1:  2900
+    SC2: 4300
+    SC3: 7300
+    SC1:  6100
+    NW2: 7500
+    NW3: 5500
+    B14: 11600
+    B1a: 9200
+    B2: 10100
+    NW1: 1800
