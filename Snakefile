@@ -93,6 +93,7 @@ rule run_phase01_model_as_rule:
             --manifest-path={input.manifest} \
             --environment=ngv \
             snakemake \
+                --cores all \
                 --snakefile modules/NGV-IEM/Snakefile \
                 --directory modules/NGV-IEM \
                 --configfile {input.overwrite_configfiles} \
@@ -113,17 +114,14 @@ rule run_gbdispatchmodel_as_rule:
         manifest=gbdispatchmodel("pixi.toml"),
         overwrite_configfiles=["config/config.gb-dispatch.yaml"],
     output:
-        network_2030=gbdispatchmodel(
-            "resources/GB/networks/HT/constrained_clustered/2030.nc"
+        network_dispatch=gbdispatchmodel(
+            "resources/GB/networks/HT/constrained_clustered/{planning_horizon}.nc"
         ),
-        network_2040=gbdispatchmodel(
-            "resources/GB/networks/HT/constrained_clustered/2040.nc"
+        network_redispatch=gbdispatchmodel(
+            "resources/GB/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
         ),
-        results_dispatch_2030=gbdispatchmodel(
-            "results/GB/networks/HT/unconstrained_clustered/2030.nc"
-        ),
-        results_dispatch_2040=gbdispatchmodel(
-            "results/GB/networks/HT/unconstrained_clustered/2040.nc"
+        results_dispatch=gbdispatchmodel(
+            "results/GB/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
         ),
     shell:
         """
@@ -189,7 +187,7 @@ rule prepare_scenario_IEM:
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizon}_no_ce.nc",
         ),
     output:
-        model="resources/dispatch/networks/IEM/{planning_horizon}.nc",
+        model="resources/base/networks/IEM/{planning_horizon}.nc",
     log:
         "logs/prepare_scenario_IEM/{planning_horizon}.log",
     script:
@@ -198,7 +196,9 @@ rule prepare_scenario_IEM:
 
 rule prepare_scenario_TF:
     message:
-        "Preparing model for uncertainty scenario based on combined model for year {planning_horizon} (scenario: TF - trader forecast)."
+        "Preparing model for uncertainty scenario based on combined model for year {wildcards.planning_horizon} (scenario: TF - trader forecast)."
+    params:
+        forecast_errors=config["forecast_errors"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
@@ -213,13 +213,14 @@ rule prepare_scenario_TF:
 rule prepare_scenario_SQ:
     message:
         "Preparing model for status quo scenario based on combined model for year {wildcards.planning_horizon} (scenario: SQ - status quo)."
+    params:
+        explicit_allocation=config["explicit_allocation"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
         model_tf=rules.prepare_scenario_TF.output.model,
     output:
         model="resources/base/networks/SQ/{planning_horizon}.nc",
-        # For validation only:
-        line_limits="resources/dispatch/line_limits/{planning_horizon}.csv",
+        line_limits="resources/base/line_limits/{planning_horizon}.csv",
     log:
         "logs/prepare_scenario_SQ/{planning_horizon}.log",
     script:
@@ -333,7 +334,7 @@ rule prepare_redispatch:
         "Preparing redispatch for year {wildcards.planning_horizon} in scenario: {wildcards.scenario}."
     input:
         dispatch_results="results/dispatch/networks/{scenario}/{planning_horizon}.nc",
-        model="resources/dispatch/networks/{scenario}/{planning_horizon}.nc",
+        model="resources/base/networks/{scenario}/{planning_horizon}.nc",
     output:
         redispatch_model="resources/dispatch/redispatch/{scenario}/{planning_horizon}.nc",
     log:

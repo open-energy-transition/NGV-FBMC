@@ -4,13 +4,18 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-
+import re
 import pypsa
 
 logger = logging.getLogger(__name__)
 
 
-def merge_gb_tyndp(gb, eur, carrier_map):
+def merge_gb_tyndp(
+    gb: pypsa.Network, eur: pypsa.Network, carrier_map: dict[str, str]
+) -> pypsa.Network:
+    """
+    Combines the TYNDP (EUR) and GB-dispatch (GB) models
+    """
     # prepare eur network by removing GB elements
     for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
         idx = (
@@ -27,6 +32,10 @@ def merge_gb_tyndp(gb, eur, carrier_map):
             idx = eur.c[comp].static.loc[eur.c[comp].static[col] == "GB00"].index
             eur.remove(comp, idx)
 
+    # create a mapping for the old GB names to the EUR names in TYNDP
+    # note some non GB countries have multiple buses in TYNDP
+    # the current assignment method only keeps buses that are connected to GB
+
     # for reference, the remaining buses in each bidding zone in each country
     eur_elec_buses = eur.buses[eur.buses.carrier == "AC"].index
 
@@ -38,13 +47,8 @@ def merge_gb_tyndp(gb, eur, carrier_map):
         (gb.buses.carrier == "H2") & ~(gb.buses.index.str.contains("GB"))
     ]
 
-    # create a mapping for the old GB names to the EUR names in TYNDP
-    # note some non GB countries have multiple buses in TYNDP
-    # the current assignment method (below) is arbitary
     gb_eur_busmap = {}
     for name, bus in non_gb_buses.iterrows():
-        # is it ok to rename the buses here or do i need to make a new bus using network remove/add property
-        # note that the network gets merged later on
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name)
         ]
@@ -53,8 +57,6 @@ def merge_gb_tyndp(gb, eur, carrier_map):
         gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
     for name, bus in non_gb_buses_h2.iterrows():
-        # is it ok to rename the buses here or do i need to make a new bus using network remove/add property
-        # note that the network gets merged later on
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name[:-3])
         ]
@@ -84,15 +86,16 @@ def merge_gb_tyndp(gb, eur, carrier_map):
         for col in cols:
             gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
 
-        if "location" in gb.c[comp].static.columns:
-            gb.c[comp].static["location"] = (
-                gb.c[comp].static["location"].replace(gb_eur_map)
-            )
+        # leave generators for now, they are reassigned in the add_co2_multilink function
+        if not comp == "Generator":
+            if "carrier" in gb.c[comp].static.columns:
+                gb.c[comp].static["carrier"] = (
+                    gb.c[comp].static["carrier"].replace(carrier_map[comp])
+                )
 
-        if "carrier" in gb.c[comp].static.columns:
-            gb.c[comp].static["carrier"] = (
-                gb.c[comp].static["carrier"].replace(carrier_map[comp])
-            )
+    # remove load shedding elements
+    load_shedding_gens = gb.generators[gb.generators.carrier == "Load Shedding"]
+    gb.remove("Generator", load_shedding_gens.index)
 
     # pypsa merge doesn't like overlapping components
     gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
@@ -103,40 +106,190 @@ def merge_gb_tyndp(gb, eur, carrier_map):
     ].index
     gb.remove("lines", non_gb_lines)
 
-    assert eur.snapshots.equals(gb.snapshots)
-    res = eur.merge(gb, with_time=True)
+    res = eur.merge(gb, with_time=False)
 
     return res
 
 
-def add_co2_multilink(n, eur, carrier_map):
-    # this is the carrier map essentially so it needs to be cleaned up
-    emitting_carriers = eur.links.carrier.unique()
-    for gb_carrier, eur_carrier in carrier_map["Generator"].items():
-        if eur_carrier in emitting_carriers:
-            gens = n.generators[
-                (n.generators.carrier == gb_carrier)
-                & (n.generators.bus.str.startswith("GB"))
-            ]
-            ref = eur.links[(eur.links.carrier == eur_carrier)]
+def add_waste_element(
+    n_gb: pypsa.Network,
+    n_merged: pypsa.Network,
+    planning_horizon: int,
+) -> pypsa.Network:
+    """
+    Adds a global source of waste to the TYNDP model.
 
-            # add a copy of the generator as a link - use european model as a reference for unknown efficiencies
-            n.add(
+    Needs to be processed separately for a lack of WtE in the current openTYNDP model version.
+
+    Parameters
+    ----------
+    n_gb : pypsa.Network
+        The GB model, used to get the assumptions for waste generation and costs
+    n_merged : pypsa.Network
+        The merged model, to which the waste element will be added.
+    planning_horizon : int
+        The planning horizon, used to determine the cost assumptions for waste generation.
+    """
+    # Source for "waste" as fuel
+    n_merged.add(
+        "Bus",
+        name="EU waste",
+        carrier="waste",
+        unit="MWh_LHV",
+        location="EU",
+    )
+    n_merged.add(
+        "Generator",
+        name="EU waste",
+        bus="EU waste",
+        carrier="waste",
+        p_nom_extendable=True,
+        marginal_cost={
+            2030: 19.0145,
+            2040: 21.131,
+        }[
+            planning_horizon
+        ],  # Costs for waste as fuel from fes_powerplants_inc_tech_data.csv
+    )
+
+    ref_waste_gens = n_gb.c["Generator"].static.loc[
+        (n_gb.c["Generator"].static.carrier == "waste")
+        & (n_gb.c["Generator"].static.bus.str.match(r"GB \d{1,2}"))
+    ]
+
+    # Attach the electricity from waste generator as link to all GB buses with AC carrier
+    n_merged.add(
+        "Link",
+        name=ref_waste_gens["bus"].to_numpy(),
+        suffix=" waste for electricity",
+        bus0="EU waste",
+        bus1=ref_waste_gens["bus"].to_numpy(),
+        bus2="co2 atmosphere",
+        carrier="waste",
+        efficiency=0.2102,  # hard coded from fes_powerplants_inc_tech_data.csv
+        efficiency2=0,  # EU regs consider waste to be a non-emitting renewable
+        p_nom_extendable=ref_waste_gens["p_nom_extendable"].to_numpy(),
+        p_nom=ref_waste_gens["p_nom"].to_numpy(),
+        capital_cost=ref_waste_gens[
+            "capital_cost"
+        ].to_numpy(),  # Not normalised, as capacity expansion is off, this number will not affect the model results
+        marginal_cost=3.145,  # from fes_powerplants_inc_tech_data.csv, not normalized for lack of suitable reference
+        marginal_cost_quadratic=0,
+    )
+
+    # Need to transfer the dynamic constraints for the waste generators separately
+    for p_lim in ["p_min_pu", "p_max_pu"]:
+        mask = (
+            n_gb.c["Generator"]
+            .dynamic[p_lim]
+            .columns.intersection(ref_waste_gens.index)
+        )
+        if mask.empty:
+            continue
+
+        n_merged.c["Generator"].dynamic[p_lim] = (
+            n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+        )
+
+    return n_merged
+
+
+def convert_generators_to_links(
+    n_merged: pypsa.Network, n_eur: pypsa.Network, carrier_map: dict[str, str]
+) -> pypsa.Network:
+    """
+    Replaces conventional generators of type Generator in the GB model with corresponding multilinks
+    to track CO2 emissions to atmosphere. Aligns generators with the cost given by the TYNDP model
+    """
+
+    # Some generation technologies in the TYNDP are represented by Link components
+    # to track fuel use and emissions, rather than as Generators
+    # Convert them from Generators to Links in the merged model, using the TYNDP assumptions for costs and efficiencies
+    # The remaining technologies where technologies are represented as Generators in both models will be
+    # aligned with their carrier names, but the components will not be converted to Links
+    for gb_carrier, eur_carrier in carrier_map["Generator"].items():
+        gens = n_merged.generators[
+            (n_merged.generators.carrier == gb_carrier)
+            & (n_merged.generators.bus.str.match("GB \\d{1,2}"))
+        ]
+        # Change the carrier name for generators
+        n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
+
+        # Change from Generator to Link if the technology is represented as a Link in the TYNDP model
+        ref = n_eur.links[
+            (n_eur.links.carrier == eur_carrier)
+            & (n_eur.links.bus1.str.match(r"GB\d{1,2}"))
+        ]
+        if not ref.empty and not gens.empty:
+            logger.info(
+                f"Converting {gb_carrier} generators to links with carrier {eur_carrier}"
+            )
+
+            n_merged.add(
                 "Link",
                 name=gens.index,
-                bus0=ref.bus0.mode()[0],  # global supply bus
+                bus0=ref.bus0.mode().iloc[0],  # global supply bus
                 bus1=gens.bus,
-                bus2=ref.bus2.mode()[0],  # co2 atmosphere
+                bus2=ref.bus2.mode().iloc[
+                    0
+                ],  # co2 atmosphere for emitting generators or nothing
+                carrier=eur_carrier,
                 p_nom=gens.p_nom,
-                efficiency=gens.efficiency,  # ref.efficiency.mean(),
+                p_nom_extendable=gens.p_nom_extendable,
+                efficiency=ref.efficiency.mean(),
                 efficiency2=ref.efficiency2.mean(),
                 capital_cost=ref.capital_cost.mean(),
                 marginal_cost=ref.marginal_cost.mean(),
                 marginal_cost_quadratic=ref.marginal_cost_quadratic.mean(),  # not used currently
             )
 
+            # Transfer constraints on dynamic p_min_pu and p_max_pu from the generator to the link if they exist
+            for p_lim in ["p_min_pu", "p_max_pu"]:
+                logger.info(
+                    f"Adding dynamic constraints {p_lim} for former {gb_carrier} generators"
+                )
+                mask = (
+                    n_gb.c["Generator"].dynamic[p_lim].columns.intersection(gens.index)
+                )
+                if mask.empty:
+                    continue
+
+                n_merged.c["Link"].dynamic[p_lim].loc[:, mask] = (
+                    n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+                )
+
             # remove the generator after the link version is created
-            n.remove("Generator", gens.index)
+            n_merged.remove("Generator", gens.index)
+
+    return n_merged
+
+
+def align_tech_econ_assumptions(
+    n: pypsa.Network, eur: pypsa.Network, carrier_map: dict[str, str]
+) -> pypsa.Network:
+    """
+    Checks for the technical and economic assumptions of non generator based components
+    """
+    for comp in ["Store", "StorageUnit", "Links"]:
+        # identifies params we are interested in
+        cols = [
+            col
+            for col in eur.storage_units.columns
+            if re.search("cost|efficiency|loss", col)
+        ]
+        carriers = carrier_map[comp]
+        for carrier_gb, carrier_eur in carriers.items():
+            # isolate entries in the merged network with the carrier
+            carrier_mask = n.c[comp].static[n.c[comp].static.carrier == carrier_eur]
+            # ref values from the original eur network
+            eur_carrier_mask = eur.c[comp].static[
+                eur.c[comp].static.carrier == carrier_eur
+            ]
+            # picks one of the reference components off the top of the list
+            ref_components = eur.c[comp].static.loc[eur_carrier_mask, carrier_eur]
+            ref_component = ref_components.iloc[0]
+            for col in cols:
+                n.c[comp].static.loc[carrier_mask, col] = ref_component[col]
 
     return n
 
@@ -144,15 +297,28 @@ def add_co2_multilink(n, eur, carrier_map):
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
+        from pathlib import Path
 
-        snakemake = mock_snakemake()
+        snakemake = mock_snakemake(
+            Path(__file__).stem,
+            planning_horizon="2030",
+        )
 
     carrier_map = snakemake.params.carrier_map
-    # todo: change to snakemake input
     n_gb = pypsa.Network(snakemake.input.gb_model)
     n_eur = pypsa.Network(snakemake.input.iem_model)
 
-    n_merged = merge_gb_tyndp(n_gb, n_eur, carrier_map)
-    n_merged = add_co2_multilink(n_merged, n_eur, carrier_map)
+    n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
+    n_merged = add_waste_element(
+        n_gb=n_gb,
+        n_merged=n_merged,
+        planning_horizon=int(snakemake.wildcards.planning_horizon),
+    )
+    n_merged = convert_generators_to_links(
+        n_merged=n_merged, n_eur=n_eur, carrier_map=carrier_map
+    )
+    # implementation TBD
+    # n_merged = align_tech_econ_assumptions(n_merged, n_eur, carrier_map)
 
+    n_merged.consistency_check()
     n_merged.export_to_netcdf(snakemake.output[0])
