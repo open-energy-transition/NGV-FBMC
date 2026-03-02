@@ -1,7 +1,3 @@
-from snakemake.common.configfile import load_configfile
-from snakemake.utils import update_config
-
-
 configfile: "config/config.default.yaml"
 configfile: "config/plotting.default.yaml"
 configfile: "config/benchmarking.default.yaml"
@@ -268,7 +264,7 @@ rule prepare_dispatch:
     log:
         "logs/prepare_dispatch/{scenario}/{planning_horizon}.log",
     script:
-        "scripts/prepare_unconstrained_network.py"
+        "scripts/prepare_dispatch.py"
 
 
 rule solve_dispatch:
@@ -294,7 +290,7 @@ rule solve_dispatch:
         ],
         # openTYNDP specific: Not used (because OH trajectories are off)
         # but keeping for consistency to be able to reuse code from the openTYNDP model
-        renewable_carriers_tyndp=config["electricity"]["renewable_carriers_tyndp"],
+        renewable_carriers_tyndp=config["electricity"]["tyndp_renewable_carriers"],
     input:
         network="resources/dispatch/networks/{scenario}/{planning_horizon}.nc",
         # TODO - add logic
