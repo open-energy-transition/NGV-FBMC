@@ -236,8 +236,12 @@ def align_tech_econ_assumptions(
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
+        from pathlib import Path
 
-        snakemake = mock_snakemake()
+        snakemake = mock_snakemake(
+            Path(__file__).stem,
+            planning_horizon="2030",
+        )
 
     carrier_map = snakemake.params.carrier_map
     n_gb = pypsa.Network(snakemake.input.gb_model)
@@ -249,4 +253,5 @@ if __name__ == "__main__":
     # implementation TBD
     # n_merged = align_tech_econ_assumptions(n_merged, n_eur, carrier_map)
 
+    n_merged.consistency_check()
     n_merged.export_to_netcdf(snakemake.output[0])
