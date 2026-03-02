@@ -2,6 +2,39 @@ run:
   prefix: ""
   name: "ngv-fbmc"
 
+# Max and min annual capacity factors for the nuclear generators across the model
+conventional:
+  nuclear:
+    max_annual_capacity_factor: 1
+    min_annual_capacity_factor: 0.50
+
+sector:
+  co2_sequestration_potential:
+    # Values from TYNDP 2024 Supply Tool
+    2030: 47
+    2040: 344
+
+electricity:
+  renewable_carriers: []
+  tyndp_renewable_carriers:
+    - other-res
+    - hydro-ror
+    - hydro-reservoir
+    - hydro-pondage
+    - hydro-phs
+    - hydro-phs-pure
+    - onwind
+    - solar-pv-utility
+    - solar-pv-rooftop
+    - offwind-ac-fb-r
+    - offwind-ac-fl-r
+    - offwind-dc-fb-r
+    - offwind-dc-fl-r
+    - offwind-dc-fb-oh
+    - offwind-dc-fl-oh
+    - offwind-h2-fb-oh
+    - offwind-h2-fl-oh
+
 carrier_mapping:
   Generator:
     Load Shedding: load
@@ -60,6 +93,7 @@ solving:
     options: gurobi-default
 
   solver_options:
+    threads: 8
     gurobi-default:
       BarConvTol: 1.e-6
     cplex-default:
