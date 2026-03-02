@@ -160,11 +160,21 @@ def add_waste_element(
     normalized_cap_cost = ref_waste_gens.capital_cost[0] * (cc_adjustment)
     normalized_marginal_cost = ref_waste_gens.marginal_cost[0] * (mc_adjustment)
 
+    # Attach the electricity from waste generator as link to all GB buses with AC carrier
+    # Avoid matching GBNI by using regex
+    buses_i = (
+        n_merged.c["Bus"]
+        .static.loc[
+            (n_merged.c["Bus"].static.carrier == "AC")
+            & (n_merged.c["Bus"].static.index.str.match(r"GB \d{1,2}"))
+        ]
+        .index
+    )
     n_merged.add(
         "Link",
-        name="ref link: waste",
+        name=buses_i + " waste for electricity",
         bus0="EU waste",
-        bus1="ref",
+        bus1=buses_i,
         bus2="co2 atmosphere",
         efficiency=0.2102,  # hard coded from fes_powerplants_inc_tech_data.csv
         efficiency2=0,  # EU regs consider waste to be a non-emitting renewable
