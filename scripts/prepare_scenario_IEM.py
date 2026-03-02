@@ -5,7 +5,6 @@
 
 import logging
 import re
-
 import pypsa
 
 logger = logging.getLogger(__name__)
@@ -125,6 +124,8 @@ def add_waste_element(
     """
     Adds a global source of waste to the TYNDP model.
 
+    Needs to be processed separately for a lack of WtE in the current openTYNDP model version.
+
     Parameters
     ----------
     n_gb : pypsa.Network
@@ -156,49 +157,45 @@ def add_waste_element(
         ],  # Costs for waste as fuel from fes_powerplants_inc_tech_data.csv
     )
 
-    ref_waste_gens = n_gb.generators[n_gb.generators.carrier == "waste"]
-    # normalize cost against biomass
-    cc_adjustment = (
-        (
-            n_merged.generators[
-                n_merged.generators.carrier == "solid biomass"
-            ].capital_cost.iloc[0]
-        )
-        / (n_gb.generators[n_gb.generators.carrier == "biomass"].capital_cost.iloc[0])
-    )
-    mc_adjustment = (
-        (
-            n_merged.generators[
-                n_merged.generators.carrier == "solid biomass"
-            ].marginal_cost.iloc[0]
-        )
-        / (n_gb.generators[n_gb.generators.carrier == "biomass"].marginal_cost.iloc[0])
-    )
-    normalized_cap_cost = ref_waste_gens.capital_cost[0] * (cc_adjustment)
-    normalized_marginal_cost = ref_waste_gens.marginal_cost[0] * (mc_adjustment)
+    ref_waste_gens = n_gb.c["Generator"].static.loc[
+        (n_gb.c["Generator"].static.carrier == "waste")
+        & (n_gb.c["Generator"].static.bus.str.match(r"GB \d{1,2}"))
+    ]
 
     # Attach the electricity from waste generator as link to all GB buses with AC carrier
-    # Avoid matching GBNI by using regex
-    buses_i = (
-        n_merged.c["Bus"]
-        .static.loc[
-            (n_merged.c["Bus"].static.carrier == "AC")
-            & (n_merged.c["Bus"].static.index.str.match(r"GB \d{1,2}"))
-        ]
-        .index
-    )
     n_merged.add(
         "Link",
-        name=buses_i + " waste for electricity",
+        name=ref_waste_gens["bus"].to_numpy(),
+        suffix=" waste for electricity",
         bus0="EU waste",
-        bus1=buses_i,
+        bus1=ref_waste_gens["bus"].to_numpy(),
         bus2="co2 atmosphere",
+        carrier="waste",
         efficiency=0.2102,  # hard coded from fes_powerplants_inc_tech_data.csv
         efficiency2=0,  # EU regs consider waste to be a non-emitting renewable
-        capital_cost=normalized_cap_cost,
-        marginal_cost=normalized_marginal_cost,
+        p_nom_extendable=ref_waste_gens["p_nom_extendable"].to_numpy(),
+        p_nom=ref_waste_gens["p_nom"].to_numpy(),
+        capital_cost=ref_waste_gens[
+            "capital_cost"
+        ].to_numpy(),  # Not normalised, as capacity expansion is off, this number will not affect the model results
+        marginal_cost=3.145,  # from fes_powerplants_inc_tech_data.csv, not normalized for lack of suitable reference
         marginal_cost_quadratic=0,
     )
+
+    # Need to transfer the dynamic constraints for the waste generators separately
+    for p_lim in ["p_min_pu", "p_max_pu"]:
+        mask = (
+            n_gb.c["Generator"]
+            .dynamic[p_lim]
+            .columns.intersection(ref_waste_gens.index)
+        )
+        if mask.empty:
+            continue
+
+        n_merged.c["Generator"].dynamic[p_lim] = (
+            n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+        )
+
     return n_merged
 
 
