@@ -118,13 +118,20 @@ def merge_gb_tyndp(
 
 
 def add_waste_element(
-    gb: pypsa.Network,
-    eur: pypsa.Network,
+    n_gb: pypsa.Network,
+    n_merged: pypsa.Network,
 ) -> pypsa.Network:
     """
-    Adds a global source of waste to the TYNDP model
+    Adds a global source of waste to the TYNDP model.
+
+    Parameters
+    ----------
+    n_gb : pypsa.Network
+        The GB model, used to get the assumptions for waste generation and costs
+    n_merged : pypsa.Network
+        The merged model, to which the waste element will be added.
     """
-    eur.add(
+    n_merged.add(
         "Bus",
         name="EU waste",
         carrier="waste",
@@ -132,24 +139,28 @@ def add_waste_element(
         location="EU",
     )
 
-    ref_waste_gens = gb.generators[gb.generators.carrier == "waste"]
+    ref_waste_gens = n_gb.generators[n_gb.generators.carrier == "waste"]
     # normalize cost against biomass
     cc_adjustment = (
-        (eur.generators[eur.generators.carrier == "solid biomass"].capital_cost.iloc[0])
-        / (gb.generators[gb.generators.carrier == "biomass"].capital_cost.iloc[0])
+        (
+            n_merged.generators[
+                n_merged.generators.carrier == "solid biomass"
+            ].capital_cost.iloc[0]
+        )
+        / (n_gb.generators[n_gb.generators.carrier == "biomass"].capital_cost.iloc[0])
     )
     mc_adjustment = (
         (
-            eur.generators[
-                eur.generators.carrier == "solid biomass"
+            n_merged.generators[
+                n_merged.generators.carrier == "solid biomass"
             ].marginal_cost.iloc[0]
         )
-        / (gb.generators[gb.generators.carrier == "biomass"].marginal_cost.iloc[0])
+        / (n_gb.generators[n_gb.generators.carrier == "biomass"].marginal_cost.iloc[0])
     )
     normalized_cap_cost = ref_waste_gens.capital_cost[0] * (cc_adjustment)
     normalized_marginal_cost = ref_waste_gens.marginal_cost[0] * (mc_adjustment)
 
-    eur.add(
+    n_merged.add(
         "Link",
         name="ref link: waste",
         bus0="EU waste",
@@ -161,7 +172,7 @@ def add_waste_element(
         marginal_cost=normalized_marginal_cost,
         marginal_cost_quadratic=0,
     )
-    return eur
+    return n_merged
 
 
 def add_co2_multilink(
