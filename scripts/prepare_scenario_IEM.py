@@ -106,7 +106,7 @@ def merge_gb_tyndp(
     ].index
     gb.remove("lines", non_gb_lines)
 
-    res = eur.merge(gb, with_time=False)
+    res = eur.merge(gb, with_time=True)
 
     return res
 
