@@ -86,11 +86,6 @@ def merge_gb_tyndp(
         for col in cols:
             gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
 
-        if "location" in gb.c[comp].static.columns:
-            gb.c[comp].static["location"] = (
-                gb.c[comp].static["location"].replace(gb_eur_map)
-            )
-
         # leave generators for now, they are reassigned in the add_co2_multilink function
         if not comp == "Generator":
             if "carrier" in gb.c[comp].static.columns:
