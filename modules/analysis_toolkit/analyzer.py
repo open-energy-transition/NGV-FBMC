@@ -1,10 +1,8 @@
 import pypsa
-import pandas as pd
 
-from helpers.config.filepaths import get_network_fps_for_year
 from helpers.results_computer_base import ResultsComputerBase
 from helpers.results_computer_wrappers import metric
-from helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, get_capacities_map
+from helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf
 
 
 class ResultsComputer(ResultsComputerBase):
