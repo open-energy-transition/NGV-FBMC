@@ -105,16 +105,19 @@ rule run_gbdispatchmodel_as_rule:
         ),
     input:
         manifest=gbdispatchmodel("pixi.toml"),
-        overwrite_configfiles=["config/config.gb-dispatch.yaml"],
+        overwrite_configfiles=[
+            gbdispatchmodel("config/config.gb.etys-subset.yaml"),
+            "config/config.gb-dispatch.yaml",
+        ],
     output:
         network_dispatch=gbdispatchmodel(
-            "resources/GB/networks/HT/constrained_clustered/{planning_horizon}.nc"
+            "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizon}.nc"
         ),
         network_redispatch=gbdispatchmodel(
-            "resources/GB/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
+            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
         ),
         results_dispatch=gbdispatchmodel(
-            "results/GB/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
+            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
         ),
     shell:
         """
@@ -162,7 +165,7 @@ rule prepare_scenario_IEM:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "resources/GB/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
+            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizon}_no_ce.nc",
