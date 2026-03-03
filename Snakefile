@@ -321,8 +321,7 @@ rule solve_dispatch:
     shadow:
         config["run"]["use_shadow_directory"]
     script:
-        # TODO: Compare these scripts
-        "modules/gb-dispatch-model/scripts/solve_network.py"
+        "scripts/solve_network.py"
 
 
 rule prepare_redispatch:
