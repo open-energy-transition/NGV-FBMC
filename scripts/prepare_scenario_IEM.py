@@ -152,9 +152,15 @@ def add_waste_element(
         ],  # Costs for waste as fuel from fes_powerplants_inc_tech_data.csv
     )
 
+    try:
+        n_merged.export_to_netcdf('res_dump.nc')
+    except:
+        print('1')
+        breakpoint()
+
     ref_waste_gens = n_gb.c["Generator"].static.loc[
         (n_gb.c["Generator"].static.carrier == "waste")
-        & (n_gb.c["Generator"].static.bus.str.match(r"GB \d{1,2}"))
+        & (n_gb.c["Generator"].static.bus.str.match(r"GB "))
     ]
 
     # Attach the electricity from waste generator as link to all GB buses with AC carrier
