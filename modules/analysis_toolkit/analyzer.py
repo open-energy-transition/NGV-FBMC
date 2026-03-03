@@ -1,8 +1,10 @@
 import pypsa
+import pandas as pd
 
+from typing import Literal
 from helpers.results_computer_base import ResultsComputerBase
 from helpers.results_computer_wrappers import metric
-from helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf
+from helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
 
 
 class ResultsComputer(ResultsComputerBase):
@@ -87,7 +89,7 @@ class ResultsComputer(ResultsComputerBase):
         boundary_flows["GB"] = net_position_gb.mul(ptdf["gb"])
         # copy the maximum and initial flows
         boundary_flows.loc[:, ["fmax", "f0"]] = ptdf.loc[:, ["fmax", "f0"]]
-        return boundary_flows
+        return boundary_flows.sort_index(level=["snapshot", "boundary", "direction"])
 
     def _compute_net_boundary_flows_ptdf(self, n: pypsa.Network):
         boundary_flows = self._boundary_flows_ptdf(n=n)
@@ -101,8 +103,28 @@ class ResultsComputer(ResultsComputerBase):
         net_boundary_flows = self._compute_net_boundary_flows_ptdf(n=n)
         loading = net_boundary_flows.div(boundary_flows.loc[:, "fmax"])
         # remove the negative loadings, only one direction per border is negative per timestamp
-        loading = loading.clip(lower=0)
-        return loading
+        return loading.clip(lower=0)
+
+    def _boundary_flows_actual(self, n: pypsa.Network):
+        """Flows on the boundary lines, which is an approximation to the actual line loading."""
+        boundaries = Boundaries(network=n, year=self.year)
+        boundary_flows_dict = {}
+        for boundary_name, boundary in boundaries.items():
+            boundary_flows_dict[(boundary_name, "DIRECT")] = n.lines_t.p0.loc[:, boundary.lines].sum(axis=1)
+            boundary_flows_dict[(boundary_name, "OPPOSITE")] = - n.lines_t.p0.loc[:, boundary.lines].sum(axis=1)
+        boundary_flows = pd.DataFrame(boundary_flows_dict, index=n.snapshots).T.stack()
+        boundary_flows = boundary_flows.rename_axis(index=["boundary", "direction", "snapshot"])
+        boundary_flows = boundary_flows.reorder_levels(["snapshot", "boundary", "direction"])
+        return boundary_flows.sort_index(level=["snapshot", "boundary", "direction"])
+
+    def _boundary_loading_actual(self, n: pypsa.Network):
+        """Actual loading of the boundary lines, based on the actual flows and the sum of the line capacities."""
+        boundaries = Boundaries(network=n, year=self.year)
+        boundary_flows = self._boundary_flows_actual(n=n)
+        capacity = boundary_flows.reset_index().apply(lambda row: boundaries[row["boundary"]].capacity, axis=1)
+        capacity.index = boundary_flows.index
+        loading = boundary_flows.div(capacity)
+        return loading.clip(lower=0)
 
     @metric
     def boundary_flows_ptdf(self, n: pypsa.Network, **kwargs):

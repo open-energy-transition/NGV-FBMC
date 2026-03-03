@@ -21,6 +21,6 @@ def get_network_fps_for_year(year: int) -> dict[str, str]:
 
 CONFIG_DIR = f"{ROOT_DIR}/modules/analysis_toolkit/helpers/config"
 
-get_boundaries_fp = lambda: f"{CONFIG_DIR}/boundaries_map.yaml"
+get_boundaries_fp = lambda: f"{CONFIG_DIR}/boundaries.yaml"
 get_capacities_fp = lambda year: f"{CONFIG_DIR}/capacities_{year}.yaml"
 get_fb_constraints_fp = lambda year: f"{CONFIG_DIR}/flow_based_constraints_{year}_v20260210.parquet"
