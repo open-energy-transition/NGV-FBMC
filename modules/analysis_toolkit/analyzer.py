@@ -65,7 +65,7 @@ class ResultsComputer(ResultsComputerBase):
             .filter(like="GB", axis=0)
         return net_position_gb.sum(axis=0)
 
-    def _get_gb_links_flows(self, n: pypsa.Network):
+    def _get_gb_interconnector_flows(self, n: pypsa.Network):
         link_flows = n.statistics.transmission(
             bus_carrier=["AC"],
             components=["Link"],
@@ -77,43 +77,53 @@ class ResultsComputer(ResultsComputerBase):
         # filter to only include links that contribute to the ptdf-based boundary loading
         return link_flows[filter_links_in_ptdf]
 
-    def _boundary_flows_dispatch(self, n: pypsa.Network):
+    def _boundary_flows_ptdf(self, n: pypsa.Network):
         """Flows on the boundary lines, which is an approximation to the actual line loading."""
-        link_flows = self._get_gb_links_flows(n=n)
-        ptdf = get_fb_constraints(year=self.year).set_index(["snapshot", "boundary"])
+        link_flows = self._get_gb_interconnector_flows(n=n)
+        ptdf = get_fb_constraints(year=self.year).set_index(["snapshot", "boundary", "direction"])
         ptdf.columns.name = "name"
         # contribution from link flows to the boundary loading, based on the ptdf values
         boundary_flows = link_flows.T.mul(ptdf)
         net_position_gb = self._get_gb_net_position(n=n)
         # contribution from the net position of GB to the boundary loading, based on the ptdf values
         boundary_flows["GB"] = net_position_gb.mul(ptdf["gb"])
+        # copy the maximum and initial flows
+        boundary_flows.loc[:, ["fmax", "f0"]] = ptdf.loc[:, ["fmax", "f0"]]
         return boundary_flows
 
-    def _boundary_loading_dispatch(self, n: pypsa.Network):
+    def _compute_net_boundary_flows_ptdf(self, n: pypsa.Network):
+        boundary_flows = self._boundary_flows_ptdf(n=n)
+        all_columns_except_fmax = boundary_flows.columns.difference(["fmax"])
+        net_boundary_flows = boundary_flows.loc[:, all_columns_except_fmax].sum(axis=1)
+        return net_boundary_flows
+
+    def _boundary_loading_ptdf(self, n: pypsa.Network):
         """Flow-based loading of the boundary lines, which is an approximation to the actual line loading."""
-        boundary_flows = self._boundary_flows_dispatch(n=n)
-        boundary_capacity_dict = get_capacities_map(self.year)
-        boundary_capacity = boundary_flows.index.get_level_values("boundary").map(boundary_capacity_dict)
-        return boundary_flows.div(boundary_capacity, axis=0)
+        boundary_flows = self._boundary_flows_ptdf(n=n)
+        net_boundary_flows = self._compute_net_boundary_flows_ptdf(n=n)
+        loading = net_boundary_flows.div(boundary_flows.loc[:, "fmax"])
+        # remove the negative loadings, only one direction per border is negative per timestamp
+        loading = loading.clip(lower=0)
+        return loading
 
     @metric
-    def boundary_flows_dispatch(self, n: pypsa.Network, **kwargs):
+    def boundary_flows_ptdf(self, n: pypsa.Network, **kwargs):
         """Flows on the boundary lines, which is an approximation to the actual line loading."""
-        return self._boundary_flows_dispatch(n=n)
+        return self._boundary_flows_ptdf(n=n)
 
     @metric
-    def boundary_loading_dispatch(self, n: pypsa.Network, **kwargs):
+    def boundary_loading_ptdf(self, n: pypsa.Network, **kwargs):
         """Flow-based loading of the boundary lines, which is an approximation to the actual line loading."""
-        return self._boundary_loading_dispatch(n=n)
+        return self._boundary_loading_ptdf(n=n)
 
     @metric
-    def boundary_congestion_count_dispatch(self, n: pypsa.Network, **kwargs):
-        """Number of hours when each boundary is congested, based in the ptdf approximation to the actual line loading."""
-        count = (self._boundary_loading_dispatch(n=n).sum(axis=1) > 1).groupby("boundary").sum()
+    def boundary_congestion_count_ptdf(self, n: pypsa.Network, **kwargs):
+        """Number of hours when each boundary-direction is congested, based in the ptdf approximation to the actual line loading."""
+        count = (self._boundary_loading_ptdf(n=n) > 1).groupby(["boundary", "direction"]).sum()
         return count
 
     @metric
-    def boundary_loading_redispatch(self, n: pypsa.Network, **kwargs):
+    def boundary_loading_actual(self, n: pypsa.Network, **kwargs):
         """
         Actual loading of the boundary lines, as opposed to the flow-based loading which is an approximation to the line loading.
         Important: this method is only valid for the redispatch networks, as the dispatch networks do not have the actual line loading information.
@@ -121,12 +131,12 @@ class ResultsComputer(ResultsComputerBase):
         return NotImplementedError()
 
     @metric
-    def boundary_congestion_count_redispatch(self, n: pypsa.Network, **kwargs):
+    def boundary_congestion_count_actual(self, n: pypsa.Network, **kwargs):
         """Number of hours when each boundary is congested, based on actual loading (not on FB constraints)."""
         return NotImplementedError()
 
 
 if __name__ == "__main__":
     rc = ResultsComputer(year=2030)
-    rc.boundary_congestion_count_dispatch.iem_dispatch()
+    rc.boundary_congestion_count_ptdf.iem_dispatch()
     print()
