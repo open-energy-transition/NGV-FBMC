@@ -294,6 +294,70 @@ def align_tech_econ_assumptions(
     return n
 
 
+def remove_components_added_in_solve_network_py(n: pypsa.Network) -> pypsa.Network:
+    """
+    Removes components that are commonly added in solve_network.py.
+
+    This is used if the same network file is reused across multiple runs of solve_network.py,
+    in this case where we reuse the IEM run for additional modelling runs.
+    By removing the components, `solve_network.py` can be run again without errors about components already existing in the network
+    and the components can be cleanly added again with the correct assumptions for each run.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network from which components should be removed.
+    """
+    logger.info(f"Removing components added in solve_network.py for network {n.name}")
+
+    # These components are not always part of the network, so
+    # we check for their existence first
+    if "co2_sequestration_limit" in n.global_constraints.index:
+        n.remove(
+            class_name="GlobalConstraint",
+            name="co2_sequestration_limit",
+        )
+
+    if "load" in n.carriers.index:
+        n.remove(
+            class_name="Carrier",
+            name="load",
+        )
+        gens_i = n.generators.query("`name`.str.endswith(' load')").index
+        n.remove(
+            class_name="Generator",
+            name=gens_i,
+        )
+
+    if "curtailment" in n.carriers.index:
+        n.remove(
+            class_name="Carrier",
+            name="curtailment",
+        )
+        gens_i = n.generators.query("`name`.str.endswith(' curtailment')").index
+        n.remove(
+            class_name="Generator",
+            name=gens_i,
+        )
+
+    return n
+
+
+def fix_electrolysis_dispatch(n: pypsa.Network) -> pypsa.Network:
+    """
+    Enforce the electrolysis dispatch to the optimal dispatch found in the solved network.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the electrolysis dispatch should be fixed.
+    """
+    logger.info(f"Fixing electrolysis dispatch for network {n.name}")
+    electrolysis_i = n.links[n.links.carrier == "H2 Electrolysis"].index
+    n.links_t.p_set.loc[:, electrolysis_i] = n.links_t.p0.loc[:, electrolysis_i]
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -304,21 +368,55 @@ if __name__ == "__main__":
             planning_horizon="2030",
         )
 
+    # Map from configfile
     carrier_map = snakemake.params.carrier_map
+
+    # Load networks
     n_gb = pypsa.Network(snakemake.input.gb_model)
     n_eur = pypsa.Network(snakemake.input.iem_model)
 
+    # Preprocess networks before merging
+    n_gb = remove_components_added_in_solve_network_py(n_gb)
+    n_eur = remove_components_added_in_solve_network_py(n_eur)
+
+    # Fix dispatch for electrolysis to the optimal dispatch found in the solved network for EUR
+    # but not for GB - we want GB to have the freedom to find the optimal dispatch in later
+    # dispatch runs as this is model internal electricity demand for the model
+    n_eur = fix_electrolysis_dispatch(n_eur)
+
+    # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
+
+    # Convert WtE generators to links
     n_merged = add_waste_element(
         n_gb=n_gb,
         n_merged=n_merged,
         planning_horizon=int(snakemake.wildcards.planning_horizon),
     )
+
+    # Convert generators to links for most conventional technologies
     n_merged = convert_generators_to_links(
         n_merged=n_merged, n_eur=n_eur, carrier_map=carrier_map
     )
-    # implementation TBD
+
+    # TODO implementation - required?
     # n_merged = align_tech_econ_assumptions(n_merged, n_eur, carrier_map)
 
+    # Logging for information: All remaining expandable components in the model
+    logger.info("All remaining expandable components in the merged model are:")
+    for c in n_merged.components:
+        if "p_nom_extendable" in c.static.columns:
+            col = "p_nom_extendable"
+        elif "e_nom_extendable" in c.static.columns:
+            col = "e_nom_extendable"
+        else:
+            continue
+
+        if c.static[col].any():
+            logger.info(f"{c}: {c.static.query(f'{col}')}")
+
+    # Never hurts
     n_merged.consistency_check()
+
+    # Export to file
     n_merged.export_to_netcdf(snakemake.output[0])
