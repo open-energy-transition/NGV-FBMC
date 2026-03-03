@@ -210,7 +210,7 @@ def convert_generators_to_links(
     for gb_carrier, eur_carrier in carrier_map["Generator"].items():
         gens = n_merged.generators[
             (n_merged.generators.carrier == gb_carrier)
-            & (n_merged.generators.bus.str.match("GB \\d{1,2}"))
+            & (n_merged.generators.bus.str.startswith("GB "))
         ]
         # Change the carrier name for generators
         n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
@@ -218,7 +218,7 @@ def convert_generators_to_links(
         # Change from Generator to Link if the technology is represented as a Link in the TYNDP model
         ref = n_eur.links[
             (n_eur.links.carrier == eur_carrier)
-            & (n_eur.links.bus1.str.match(r"GB\d{1,2}"))
+            & (n_eur.links.bus1.str.startswith("GB "))
         ]
         if not ref.empty and not gens.empty:
             logger.info(
@@ -413,10 +413,10 @@ if __name__ == "__main__":
             continue
 
         if c.static[col].any():
-            logger.info(f"{c}: {c.static.query(f'{col}')}")
+            logger.info(f"{c}: {c.static.query(f'{col}').index.tolist()}")
 
     # Never hurts
     n_merged.consistency_check()
 
     # Export to file
-    n_merged.export_to_netcdf(snakemake.output[0])
+    n_merged.export_to_netcdf(snakemake.output["model"])
