@@ -95,12 +95,7 @@ def metric(func: Callable[..., Any]):
             def compare_diff(self, **kwargs):
                 return self._rc._compare_diff(lambda n: self._f(n, **kwargs))
 
-            def __call__(self, *args, **kwargs):
-                # Allowed: called with a Network (optionally with kwargs) -> compute and return result
-                if args:
-                    n = args[0]
-                    combined = self._combine(kwargs)
-                    return self._f(n, **combined)
+            def __call__(self, **kwargs):
                 # Disallow: kwargs without a Network -> ambiguous usage
                 if kwargs:
                     raise TypeError(
