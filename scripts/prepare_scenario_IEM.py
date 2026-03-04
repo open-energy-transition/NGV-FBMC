@@ -263,12 +263,13 @@ def convert_generators_to_links(
             # Some emitting generators have no reference links that exist (e.g. waste)
             if ref.empty and eur_carrier in global_supply_map.index:
                 ref = gens
-                ref["bus0"] = global_supply_map.loc[eur_carrier, "bus"]
-                ref["bus1"] = gens.bus
-                ref["bus2"] = (
-                    "co2 atmosphere"  # for non emitters should be nothing/nan - but doesn't matter for accounting as long as efficiency is correctly 0
+                ref = ref.assign(
+                    bus0=global_supply_map.loc[eur_carrier, "bus"],
+                    bus1=gens.bus,
+                    # for non emitters should be nothing/nan - but doesn't matter for accounting as long as efficiency is correctly 0
+                    bus2="co2 atmosphere",
+                    efficiency2=0.0,
                 )
-                ref["efficiency2"] = 0.0
 
             if not gens.empty:
                 logger.info(
