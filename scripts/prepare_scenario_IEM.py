@@ -230,7 +230,9 @@ def convert_generators_to_links(
     to track CO2 emissions to atmosphere. Aligns generators with the cost given by the TYNDP model
     """
 
-    global_supply_map = n_merged.generators[n_merged.generators.bus.str.startswith('EU')].set_index('carrier')
+    global_supply_map = n_merged.generators[
+        n_merged.generators.bus.str.startswith("EU")
+    ].set_index("carrier")
 
     # Some generation technologies in the TYNDP are represented by Link components
     # to track fuel use and emissions, rather than as Generators
@@ -239,12 +241,16 @@ def convert_generators_to_links(
     # aligned with their carrier names, but the components will not be converted to Links
     for gb_carrier, eur_carrier in carrier_map["Generator"].items():
         # check that the generator type isn't intended to stay as a generator (e.g. solar and other renewables)
-        if not (('solar' in eur_carrier) or ('wind' in eur_carrier) or ('geothermal' in eur_carrier)):
+        if not (
+            ("solar" in eur_carrier)
+            or ("wind" in eur_carrier)
+            or ("geothermal" in eur_carrier)
+        ):
             gens = n_merged.generators[
                 (n_merged.generators.carrier == gb_carrier)
                 & (n_merged.generators.bus.str.startswith("GB "))
             ]
-            
+
             # Change the carrier name for generators
             n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
 
@@ -257,10 +263,12 @@ def convert_generators_to_links(
             # Some emitting generators have no reference links that exist (e.g. waste)
             if ref.empty and eur_carrier in global_supply_map.index:
                 ref = gens
-                ref['bus0'] = global_supply_map.loc[eur_carrier, 'bus']
-                ref['bus1'] = gens.bus
-                ref['bus2'] = 'co2 atmosphere' # for non emitters should be nothing/nan?
-                ref['efficiency2'] = 0.0 
+                ref["bus0"] = global_supply_map.loc[eur_carrier, "bus"]
+                ref["bus1"] = gens.bus
+                ref["bus2"] = (
+                    "co2 atmosphere"  # for non emitters should be nothing/nan - but doesn't matter for accounting as long as efficiency is correctly 0
+                )
+                ref["efficiency2"] = 0.0
 
             if not gens.empty:
                 logger.info(
@@ -291,7 +299,9 @@ def convert_generators_to_links(
                         f"Adding dynamic constraints {p_lim} for former {gb_carrier} generators"
                     )
                     mask = (
-                        n_gb.c["Generator"].dynamic[p_lim].columns.intersection(gens.index)
+                        n_gb.c["Generator"]
+                        .dynamic[p_lim]
+                        .columns.intersection(gens.index)
                     )
                     if mask.empty:
                         continue
