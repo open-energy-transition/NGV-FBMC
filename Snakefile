@@ -2,6 +2,11 @@ from snakemake.common.configfile import load_configfile
 from snakemake.utils import update_config
 
 
+wildcard_constraints:
+    planning_horizons="2030|2040",
+    scenario="IEM|TF|SQ|FBMC",
+
+
 configfile: "config/config.ngv-fbmc.yaml"
 
 
@@ -111,13 +116,13 @@ rule run_gbdispatchmodel_as_rule:
         ],
     output:
         network_dispatch=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizon}.nc"
+            "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
         ),
         network_redispatch=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
+            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
         results_dispatch=gbdispatchmodel(
-            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
+            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
     shell:
         """
@@ -158,91 +163,91 @@ rule run_gbdispatchmodel_as_rule:
 
 rule prepare_scenario_IEM:
     message:
-        "Preparing a combined model based on phase NGV-IEM model and GB Dispatch Model network for year {wildcards.planning_horizon} (scenario: IEM - integrated energy market)."
+        "Preparing a combined model based on phase NGV-IEM model and GB Dispatch Model network for year {wildcards.planning_horizons} (scenario: IEM - integrated energy market)."
     params:
         carrier_map=config["carrier_mapping"],
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizon}.nc"
+            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
         iem_model=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all___{planning_horizon}_no_ce.nc",
+            "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
         ),
     output:
-        model="resources/base/networks/IEM/{planning_horizon}.nc",
+        model="resources/base/networks/IEM/{planning_horizons}.nc",
     log:
-        "logs/prepare_scenario_IEM/{planning_horizon}.log",
+        "logs/prepare_scenario_IEM/{planning_horizons}.log",
     script:
         "scripts/prepare_scenario_IEM.py"
 
 
 rule prepare_scenario_TF:
     message:
-        "Preparing model for uncertainty scenario based on combined model for year {wildcards.planning_horizon} (scenario: TF - trader forecast)."
+        "Preparing model for uncertainty scenario based on combined model for year {wildcards.planning_horizons} (scenario: TF - trader forecast)."
     params:
         forecast_errors=config["forecast_errors"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
         forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
     output:
-        model="resources/base/networks/TF/{planning_horizon}.nc",
+        model="resources/base/networks/TF/{planning_horizons}.nc",
     log:
-        "logs/prepare_scenario_TF/{planning_horizon}.log",
+        "logs/prepare_scenario_TF/{planning_horizons}.log",
     script:
         "scripts/prepare_scenario_TF.py"
 
 
 rule prepare_scenario_SQ:
     message:
-        "Preparing model for status quo scenario based on combined model for year {wildcards.planning_horizon} (scenario: SQ - status quo)."
+        "Preparing model for status quo scenario based on combined model for year {wildcards.planning_horizons} (scenario: SQ - status quo)."
     params:
         explicit_allocation=config["explicit_allocation"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
         model_tf=rules.prepare_scenario_TF.output.model,
     output:
-        model="resources/base/networks/SQ/{planning_horizon}.nc",
-        line_limits="resources/base/line_limits/{planning_horizon}.csv",
+        model="resources/base/networks/SQ/{planning_horizons}.nc",
+        line_limits="resources/base/line_limits/{planning_horizons}.csv",
     log:
-        "logs/prepare_scenario_SQ/{planning_horizon}.log",
+        "logs/prepare_scenario_SQ/{planning_horizons}.log",
     script:
         "scripts/prepare_scenario_SQ.py"
 
 
 rule retrieve_data_FBMC:
     message:
-        "Retrieving data for flow-based market coupling for year {wildcards.planning_horizon} (scenario: FBMC - flow-based market coupling)."
+        "Retrieving data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     output:
-        ptdf="data/NGV-FBMC/ptdf/{planning_horizon}.parquet",
-        ram="data/NGV-FBMC/ram/{planning_horizon}.parquet",
+        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.parquet",
+        ram="data/NGV-FBMC/ram/{planning_horizons}.parquet",
     log:
-        "logs/retrieve_data_FBMC/{planning_horizon}.log",
+        "logs/retrieve_data_FBMC/{planning_horizons}.log",
     run:
         raise NotImplementedError("Logic not yet implemented.")
 
 
 rule prepare_scenario_FBMC:
     message:
-        "Preparing model for flow-based scenario based on combined model for year {wildcards.planning_horizon} (scenario: FBMC - flow-based market coupling)."
+        "Preparing model for flow-based scenario based on combined model for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        ptdf="data/NGV-FBMC/ptdf/{planning_horizon}.parquet",
-        ram="data/NGV-FBMC/ram/{planning_horizon}.parquet",
+        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.parquet",
+        ram="data/NGV-FBMC/ram/{planning_horizons}.parquet",
     output:
-        model="resources/base/networks/FBMC/{planning_horizon}.nc",
+        model="resources/base/networks/FBMC/{planning_horizons}.nc",
     log:
-        "logs/prepare_scenario_FBMC/{planning_horizon}.log",
+        "logs/prepare_scenario_FBMC/{planning_horizons}.log",
     script:
         "scripts/prepare_scenario_FBMC.py"
 
 
 rule solve_dispatch:
     message:
-        "Running the dispatch for the combined model for year {wildcards.planning_horizon} in scenario: {wildcards.scenario}."
+        "Running the dispatch for the combined model for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
     input:
-        model="resources/dispatch/networks/{scenario}/{planning_horizon}.nc",
+        model="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
         ptdf=branch(
             rules.prepare_scenario_FBMC.input.ptdf,
             lambda wildcards: wildcards.scenario == "FBMC",
@@ -252,35 +257,35 @@ rule solve_dispatch:
             lambda wildcards: wildcards.scenario == "FBMC",
         ),
     output:
-        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizon}.nc",
+        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
     log:
-        "logs/solve_dispatch/{scenario}/{planning_horizon}.log",
+        "logs/solve_dispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/solve_dispatch.py"
 
 
 rule prepare_redispatch:
     message:
-        "Preparing redispatch for year {wildcards.planning_horizon} in scenario: {wildcards.scenario}."
+        "Preparing redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
     input:
-        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizon}.nc",
-        model="resources/base/networks/{scenario}/{planning_horizon}.nc",
+        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+        model="resources/base/networks/{scenario}/{planning_horizons}.nc",
     output:
-        redispatch_model="resources/dispatch/redispatch/{scenario}/{planning_horizon}.nc",
+        redispatch_model="resources/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
     log:
-        "logs/prepare_redispatch/{scenario}_{planning_horizon}.log",
+        "logs/prepare_redispatch/{scenario}_{planning_horizons}.log",
     script:
         "scripts/prepare_redispatch.py"
 
 
 rule solve_redispatch:
     message:
-        "Running the redispatch for year {wildcards.planning_horizon} in scenario: {wildcards.scenario}."
+        "Running the redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
     input:
         redispatch_model=rules.prepare_redispatch.output.redispatch_model,
     output:
-        redispatch_results="results/dispatch/redispatch/{scenario}/{planning_horizon}.nc",
+        redispatch_results="results/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
     log:
-        "logs/solve_redispatch/{scenario}/{planning_horizon}.log",
+        "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/solve_redispatch.py"
