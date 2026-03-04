@@ -437,9 +437,10 @@ def reset_network(n: pypsa.Network) -> pypsa.Network:
             "default",
         ]
         for attribute in defaults.index:
-            comp.dynamic[attribute] = comp.dynamic[attribute].drop(
-                columns=comp.dynamic[attribute].columns
-            )
+            if attribute in comp.dynamic:
+                comp.dynamic[attribute] = comp.dynamic[attribute].drop(
+                    columns=comp.dynamic[attribute].columns
+                )
 
     return n
 
@@ -451,7 +452,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             Path(__file__).stem,
-            planning_horizon="2030",
+            planning_horizons="2030",
         )
 
     # Map from configfile
@@ -460,10 +461,6 @@ if __name__ == "__main__":
     # Load networks
     n_gb = pypsa.Network(snakemake.input.gb_model)
     n_eur = pypsa.Network(snakemake.input.iem_model)
-
-    # Reset networks before merging
-    n_gb = reset_network(n_gb)
-    n_eur = reset_network(n_eur)
 
     # Preprocess networks before merging
     n_gb = remove_components_added_in_solve_network_py(n_gb)
@@ -474,6 +471,10 @@ if __name__ == "__main__":
     # dispatch runs as this is model internal electricity demand for the model
     n_eur = fix_electrolysis_dispatch(n_eur)
 
+    # Reset networks before merging
+    n_gb = reset_network(n_gb)
+    n_eur = reset_network(n_eur)
+
     # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
 
@@ -481,7 +482,7 @@ if __name__ == "__main__":
     n_merged = add_waste_element(
         n_gb=n_gb,
         n_merged=n_merged,
-        planning_horizon=int(snakemake.wildcards.planning_horizon),
+        planning_horizon=int(snakemake.wildcards.planning_horizons),
     )
 
     # Convert generators to links for most conventional technologies
