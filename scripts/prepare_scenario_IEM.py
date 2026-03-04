@@ -16,7 +16,8 @@ def merge_gb_tyndp(
     """
     Combines the TYNDP (EUR) and GB-dispatch (GB) models
     """
-    # prepare eur network by removing GB elements
+    # prepare eur network by removing GB elements from the openTYNDP model
+    # (i.e. either GB based or offshore hub buses)
     for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
         idx = (
             eur.c[comp]
@@ -27,8 +28,11 @@ def merge_gb_tyndp(
             .index
         )
         eur.remove(comp, idx)
-        cols = [col for col in eur.c[comp].static.columns if col.startswith("bus")]
-        for col in cols:
+
+        # Remove also any components that are either located on these buses
+        # or connected to at least with one port to any of these buses
+        bus_cols = [col for col in eur.c[comp].static.columns if col.startswith("bus")]
+        for col in bus_cols:
             idx = eur.c[comp].static.loc[eur.c[comp].static[col] == "GB00"].index
             eur.remove(comp, idx)
 
@@ -40,38 +44,65 @@ def merge_gb_tyndp(
     eur_elec_buses = eur.buses[eur.buses.carrier == "AC"].index
 
     # prepare gb network
-    non_gb_buses = gb.buses[
-        (gb.buses.carrier == "AC") & ~(gb.buses.index.str.contains("GB"))
+    non_gb_buses = gb.buses[~(gb.buses.index.str.contains("GB"))]
+    non_gb_ac_buses = gb.buses[
+        ~(gb.buses.index.str.contains("GB")) & (gb.buses.carrier == "AC")
     ]
-    non_gb_buses_h2 = gb.buses[
-        (gb.buses.carrier == "H2") & ~(gb.buses.index.str.contains("GB"))
+    non_gb_h2_buses = gb.buses[
+        ~(gb.buses.index.str.contains("GB")) & (gb.buses.carrier == "H2")
     ]
 
     gb_eur_busmap = {}
-    for name, bus in non_gb_buses.iterrows():
+    for name, bus in non_gb_ac_buses.iterrows():
+        # Find the bidding zones of the countries, matching to the GB model country node
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name)
         ]
+        # Preseve these bidding zones...
         buses_keep = ["DKW1", "NOS0", "FR00"]
         intersection = list(set(buses_keep) & set(country_matches))
+
+        # ... for all others map to the first best match
         gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
-    for name, bus in non_gb_buses_h2.iterrows():
+    for name, bus in non_gb_h2_buses.iterrows():
+        # Find the bidding zones of the countries, matching to the GB model country node
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name[:-3])
         ]
+        # Preseve these bidding zones...
         buses_keep = ["DKW1 H2", "NOS0 H2", "FR00 H2"]
         intersection = list(set(buses_keep) & set(country_matches))
+        # ... for all others map to the first best match
         gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
-    # these buses are no longer relevant
+    # Remove all non-GB buses from the network
     gb.remove("Bus", non_gb_buses.index)
-    # remove associated components
+
+    # remove components associated with these buses
     for comp in ["Store", "Generator", "Load", "StorageUnit"]:
-        non_gb_comp_idx = gb.c[comp].static[gb.c[comp].static.bus.isin(non_gb_buses.index)].index
+        non_gb_comp_idx = (
+            gb.c[comp].static[gb.c[comp].static.bus.isin(non_gb_buses.index)].index
+        )
         gb.remove(comp, non_gb_comp_idx)
 
-    # check all carriers are accounted for
+    # Remove all Links and Lines where no port is connected to GB
+    for comp in gb.components[["Link", "Line"]]:
+        # Find all "bus\d" columns
+        bus_cols = [col for col in comp.static.columns if col.startswith("bus")]
+
+        # Determine all components for which all buses are connected to non-GB buses ...
+        comp_i = comp.static.loc[
+            (
+                (comp.static[bus_cols].isin(non_gb_buses.index))
+                | (comp.static[bus_cols] == "")
+            ).all(axis="columns")
+        ].index
+
+        # ... and remove those components from the GB model
+        gb.remove(comp.name, comp_i)
+
+    # check all carriers are accounted for in the mapping
     for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
         gb_carriers = gb.c[comp].static.carrier.unique()
         eur_carriers = eur.c[comp].static.carrier.unique()
@@ -84,31 +115,24 @@ def merge_gb_tyndp(
                         f"Cannot find mapped value for carrier {carrier} component type {comp}"
                     )
 
-    # connect to buses as named in open-tyndp
-    for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
-        cols = [col for col in gb.c[comp].static.columns if col.startswith("bus")]
-        for col in cols:
-            gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
+    # Prepare to connect the interconnectors in the GB model to the buses in open-tyndp
+    # Rename first, such that the connections match after merging the networks later
+    # (this only affects Link compnents. Lines are not inter-country and all other components
+    # are only attached to a single bus, which is either part of the model or not)
+    bus_cols = [col for col in gb.c["Link"].static.columns if col.startswith("bus")]
+    gb.c["Link"].static[bus_cols] = gb.c["Link"].static[bus_cols].replace(gb_eur_busmap)
 
-        # leave generators for now, they are reassigned in the add_co2_multilink function
-        if not comp == "Generator":
-            if "carrier" in gb.c[comp].static.columns:
-                gb.c[comp].static["carrier"] = (
-                    gb.c[comp].static["carrier"].replace(carrier_map[comp])
-                )
+    # Map carriers from GB model to carrier names in the openTYNDP model
+    # leave generators for now, they are reassigned in the add_co2_multilink function
+    for comp in gb.components[["Link", "Store", "StorageUnit", "Load"]]:
+        comp.static["carrier"] = comp.static["carrier"].replace(carrier_map[comp.name])
 
-    # remove load shedding elements
+    # remove load shedding elements - they are named slightly different in the GB model
     load_shedding_gens = gb.generators[gb.generators.carrier == "Load Shedding"]
     gb.remove("Generator", load_shedding_gens.index)
 
     # pypsa merge doesn't like overlapping components
     gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
-    gb.remove("Bus", non_gb_buses_h2.index)
-
-    non_gb_lines = gb.lines[
-        ~(gb.lines.bus0.str.contains("GB")) & ~(gb.lines.bus1.str.contains("GB"))
-    ].index
-    gb.remove("lines", non_gb_lines)
 
     res = eur.merge(gb, with_time=True)
 
