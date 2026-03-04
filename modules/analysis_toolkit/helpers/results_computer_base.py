@@ -2,8 +2,8 @@ from typing import Callable, Any
 import pypsa
 import pandas as pd
 
-from modules.analysis_toolkit.helpers.config.constants import GROUPBY_OPTIONS, GLOBAL_GROUPBY
 from modules.analysis_toolkit.helpers.config.filepaths import get_network_fps_for_year
+from modules.analysis_toolkit.helpers.config.constants import GROUPBY_OPTIONS, GLOBAL_GROUPBY
 from modules.analysis_toolkit.helpers.results_computer_wrappers import NetworkSelector, metric
 
 
@@ -26,8 +26,8 @@ class ResultsComputerBase:
 
     def get_network_dict(self) -> dict[str, pypsa.Network]:
         return {name: pypsa.Network(path)
-            for name, path in get_network_fps_for_year(self.year).items()
-        }
+                for name, path in get_network_fps_for_year(self.year).items()
+                }
 
     def change_computation_settings(self, groupby: list[GROUPBY_OPTIONS], groupby_time: bool):
         self.groupby = groupby
