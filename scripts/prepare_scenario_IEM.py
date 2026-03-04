@@ -66,6 +66,10 @@ def merge_gb_tyndp(
 
     # these buses are no longer relevant
     gb.remove("Bus", non_gb_buses.index)
+    # remove associated components
+    for comp in ["Store", "Generator", "Load", "StorageUnit"]:
+        non_gb_comp_idx = gb.c[comp].static[gb.c[comp].static.bus.isin(non_gb_buses.index)].index
+        gb.remove(comp, non_gb_comp_idx)
 
     # check all carriers are accounted for
     for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
