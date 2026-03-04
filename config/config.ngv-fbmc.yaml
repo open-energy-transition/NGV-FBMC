@@ -9,7 +9,7 @@ carrier_mapping:
     oil: oil-heavy
     solar: solar-pv-utility
     waste: waste
-    CCGT: CCGT
+    CCGT: gas-ccgt
     OCGT: OCGT
   Link:
     Baseline Electricity (I&C) DSR reverse: battery discharger
