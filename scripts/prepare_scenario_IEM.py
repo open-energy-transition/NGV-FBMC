@@ -58,7 +58,7 @@ def merge_gb_tyndp(
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name)
         ]
-        # Preseve these bidding zones...
+        # Preserve these bidding zones...
         buses_keep = ["DKW1", "NOS0", "FR00"]
         intersection = list(set(buses_keep) & set(country_matches))
 
@@ -70,7 +70,7 @@ def merge_gb_tyndp(
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name[:-3])
         ]
-        # Preseve these bidding zones...
+        # Preserve these bidding zones...
         buses_keep = ["DKW1 H2", "NOS0 H2", "FR00 H2"]
         intersection = list(set(buses_keep) & set(country_matches))
         # ... for all others map to the first best match
@@ -117,7 +117,7 @@ def merge_gb_tyndp(
 
     # Prepare to connect the interconnectors in the GB model to the buses in open-tyndp
     # Rename first, such that the connections match after merging the networks later
-    # (this only affects Link compnents. Lines are not inter-country and all other components
+    # (this only affects Link components. Lines are not inter-country and all other components
     # are only attached to a single bus, which is either part of the model or not)
     bus_cols = [col for col in gb.c["Link"].static.columns if col.startswith("bus")]
     gb.c["Link"].static[bus_cols] = gb.c["Link"].static[bus_cols].replace(gb_eur_busmap)
@@ -411,6 +411,39 @@ def fix_electrolysis_dispatch(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def reset_network(n: pypsa.Network) -> pypsa.Network:
+    """
+    Removes outputs from the network added after an optimisation run.
+
+    This prevents confusion between outputs of different iterations if not all values are overwritten and reduces the file size.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network from which dynamic outputs should be removed.
+    """
+    logger.info("Resetting network")
+
+    for comp in n.components:
+        # Reset static components
+        defaults = comp.defaults.loc[
+            (comp.defaults["status"] == "Output") & (comp.defaults["static"]), "default"
+        ]
+        comp.static = comp.static.assign(**defaults.to_dict())
+
+        # Reset dynamic components
+        defaults = comp.defaults.loc[
+            (comp.defaults["status"] == "Output") & (comp.defaults["varying"]),
+            "default",
+        ]
+        for attribute in defaults.index:
+            comp.dynamic[attribute] = comp.dynamic[attribute].drop(
+                columns=comp.dynamic[attribute].columns
+            )
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -427,6 +460,10 @@ if __name__ == "__main__":
     # Load networks
     n_gb = pypsa.Network(snakemake.input.gb_model)
     n_eur = pypsa.Network(snakemake.input.iem_model)
+
+    # Reset networks before merging
+    n_gb = reset_network(n_gb)
+    n_eur = reset_network(n_eur)
 
     # Preprocess networks before merging
     n_gb = remove_components_added_in_solve_network_py(n_gb)
