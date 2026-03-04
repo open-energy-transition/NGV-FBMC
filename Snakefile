@@ -5,6 +5,11 @@ configfile: "config/config.tyndp.yaml"
 configfile: "config/config.ngv-fbmc.yaml"
 
 
+wildcard_constraints:
+    planning_horizons="2030|2040",
+    scenario="IEM|TF|SQ|FBMC",
+
+
 # Notes about limitations in integrating existing workflows as modules:
 # 1. Each module has its own configuration files that need to be loaded separately.
 #    Loading from <module>/config/*.yaml does unfortunately not work,
@@ -108,16 +113,19 @@ rule run_gbdispatchmodel_as_rule:
         ),
     input:
         manifest=gbdispatchmodel("pixi.toml"),
-        overwrite_configfiles=["config/config.gb-dispatch.yaml"],
+        overwrite_configfiles=[
+            gbdispatchmodel("config/config.gb.etys-subset.yaml"),
+            "config/config.gb-dispatch.yaml",
+        ],
     output:
         network_dispatch=gbdispatchmodel(
-            "resources/GB/networks/HT/constrained_clustered/{planning_horizons}.nc"
+            "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
         ),
         network_redispatch=gbdispatchmodel(
-            "resources/GB/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
         results_dispatch=gbdispatchmodel(
-            "results/GB/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
     shell:
         """
@@ -177,7 +185,7 @@ rule prepare_scenario_IEM:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "resources/GB/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
