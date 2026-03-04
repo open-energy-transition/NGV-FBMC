@@ -2,8 +2,9 @@ from typing import Callable, Any
 import pypsa
 import pandas as pd
 
-from config.constants import GROUPBY_OPTIONS
-from results_computer_wrappers import NetworkSelector, metric
+from modules.analysis_toolkit.helpers.config.filepaths import get_network_fps_for_year
+from modules.analysis_toolkit.helpers.config.constants import GROUPBY_OPTIONS, GLOBAL_GROUPBY
+from modules.analysis_toolkit.helpers.results_computer_wrappers import NetworkSelector, metric
 
 
 class ResultsComputerBase:
@@ -17,9 +18,16 @@ class ResultsComputerBase:
     Callers can use: res.revenue.iem(**kwargs), res.revenue.diff(), res.revenue.sq(), res.revenue(n, **kwargs)
     """
 
-    def __init__(self, network_paths_dict: dict[str, pypsa.Network]):
-        self.ns: NetworkSelector = NetworkSelector(network_paths_dict)
-        self.groupby: list[GROUPBY_OPTIONS] = ["component", "carrier"]
+    def __init__(self, year: int):
+        self.year = year
+        self.ns: NetworkSelector = NetworkSelector(self.get_network_dict())
+        self.groupby: list[GROUPBY_OPTIONS] = GLOBAL_GROUPBY
+        self.groupby_time: bool = False
+
+    def get_network_dict(self) -> dict[str, pypsa.Network]:
+        return {name: pypsa.Network(path)
+                for name, path in get_network_fps_for_year(self.year).items()
+                }
 
     def change_computation_settings(self, groupby: list[GROUPBY_OPTIONS], groupby_time: bool):
         self.groupby = groupby
