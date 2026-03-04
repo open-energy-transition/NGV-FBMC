@@ -156,12 +156,6 @@ def add_waste_element(
         ],  # Costs for waste as fuel from fes_powerplants_inc_tech_data.csv
     )
 
-    try:
-        n_merged.export_to_netcdf('res_dump.nc')
-    except:
-        print('1')
-        breakpoint()
-
     ref_waste_gens = n_gb.c["Generator"].static.loc[
         (n_gb.c["Generator"].static.carrier == "waste")
         & (n_gb.c["Generator"].static.bus.str.match(r"GB "))
@@ -212,64 +206,78 @@ def convert_generators_to_links(
     to track CO2 emissions to atmosphere. Aligns generators with the cost given by the TYNDP model
     """
 
+    global_supply_map = n_merged.generators[n_merged.generators.bus.str.startswith('EU')].set_index('carrier')
+
     # Some generation technologies in the TYNDP are represented by Link components
     # to track fuel use and emissions, rather than as Generators
     # Convert them from Generators to Links in the merged model, using the TYNDP assumptions for costs and efficiencies
     # The remaining technologies where technologies are represented as Generators in both models will be
     # aligned with their carrier names, but the components will not be converted to Links
     for gb_carrier, eur_carrier in carrier_map["Generator"].items():
-        gens = n_merged.generators[
-            (n_merged.generators.carrier == gb_carrier)
-            & (n_merged.generators.bus.str.startswith("GB "))
-        ]
-        # Change the carrier name for generators
-        n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
+        # check that the generator type isn't intended to stay as a generator (e.g. solar and other renewables)
+        if not (('solar' in eur_carrier) or ('wind' in eur_carrier) or ('geothermal' in eur_carrier)):
+            gens = n_merged.generators[
+                (n_merged.generators.carrier == gb_carrier)
+                & (n_merged.generators.bus.str.startswith("GB "))
+            ]
+            
+            # Change the carrier name for generators
+            n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
 
-        # Change from Generator to Link if the technology is represented as a Link in the TYNDP model
-        ref = n_eur.links[
-            (n_eur.links.carrier == eur_carrier)
-            & (n_eur.links.bus1.str.startswith("GB "))
-        ]
-        if not ref.empty and not gens.empty:
-            logger.info(
-                f"Converting {gb_carrier} generators to links with carrier {eur_carrier}"
-            )
+            # Change from Generator to Link if the technology is represented as a Link in the TYNDP model
+            ref = n_eur.links[
+                (n_eur.links.carrier == eur_carrier)
+                & (n_eur.links.bus1.str.startswith("GB"))
+            ]
 
-            n_merged.add(
-                "Link",
-                name=gens.index,
-                bus0=ref.bus0.mode().iloc[0],  # global supply bus
-                bus1=gens.bus,
-                bus2=ref.bus2.mode().iloc[
-                    0
-                ],  # co2 atmosphere for emitting generators or nothing
-                carrier=eur_carrier,
-                p_nom=gens.p_nom,
-                p_nom_extendable=gens.p_nom_extendable,
-                efficiency=ref.efficiency.mean(),
-                efficiency2=ref.efficiency2.mean(),
-                capital_cost=ref.capital_cost.mean(),
-                marginal_cost=ref.marginal_cost.mean(),
-                marginal_cost_quadratic=ref.marginal_cost_quadratic.mean(),  # not used currently
-            )
+            # Some emitting generators have no reference links that exist (e.g. waste)
+            if ref.empty and eur_carrier in global_supply_map.index:
+                ref = gens
+                ref['bus0'] = global_supply_map.loc[eur_carrier, 'bus']
+                ref['bus1'] = gens.bus
+                ref['bus2'] = 'co2 atmosphere' # for non emitters should be nothing/nan?
+                ref['efficiency2'] = 0.0 
 
-            # Transfer constraints on dynamic p_min_pu and p_max_pu from the generator to the link if they exist
-            for p_lim in ["p_min_pu", "p_max_pu"]:
+            if not gens.empty:
                 logger.info(
-                    f"Adding dynamic constraints {p_lim} for former {gb_carrier} generators"
-                )
-                mask = (
-                    n_gb.c["Generator"].dynamic[p_lim].columns.intersection(gens.index)
-                )
-                if mask.empty:
-                    continue
-
-                n_merged.c["Link"].dynamic[p_lim].loc[:, mask] = (
-                    n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+                    f"Converting {gb_carrier} generators to links with carrier {eur_carrier}"
                 )
 
-            # remove the generator after the link version is created
-            n_merged.remove("Generator", gens.index)
+                n_merged.add(
+                    "Link",
+                    name=gens.index,
+                    bus0=ref.bus0.mode().iloc[0],  # global supply bus
+                    bus1=gens.bus,
+                    bus2=ref.bus2.mode().iloc[
+                        0
+                    ],  # co2 atmosphere for emitting generators or nothing
+                    carrier=eur_carrier,
+                    p_nom=gens.p_nom,
+                    p_nom_extendable=gens.p_nom_extendable,
+                    efficiency=ref.efficiency.mean(),
+                    efficiency2=ref.efficiency2.mean(),
+                    capital_cost=ref.capital_cost.mean(),
+                    marginal_cost=ref.marginal_cost.mean(),
+                    marginal_cost_quadratic=ref.marginal_cost_quadratic.mean(),  # not used currently
+                )
+
+                # Transfer constraints on dynamic p_min_pu and p_max_pu from the generator to the link if they exist
+                for p_lim in ["p_min_pu", "p_max_pu"]:
+                    logger.info(
+                        f"Adding dynamic constraints {p_lim} for former {gb_carrier} generators"
+                    )
+                    mask = (
+                        n_gb.c["Generator"].dynamic[p_lim].columns.intersection(gens.index)
+                    )
+                    if mask.empty:
+                        continue
+
+                    n_merged.c["Link"].dynamic[p_lim].loc[:, mask] = (
+                        n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+                    )
+
+                # remove the generator after the link version is created
+                n_merged.remove("Generator", gens.index)
 
     return n_merged
 
