@@ -16,7 +16,8 @@ def merge_gb_tyndp(
     """
     Combines the TYNDP (EUR) and GB-dispatch (GB) models
     """
-    # prepare eur network by removing GB elements
+    # prepare eur network by removing GB elements from the openTYNDP model
+    # (i.e. either GB based or offshore hub buses)
     for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
         idx = (
             eur.c[comp]
@@ -27,8 +28,11 @@ def merge_gb_tyndp(
             .index
         )
         eur.remove(comp, idx)
-        cols = [col for col in eur.c[comp].static.columns if col.startswith("bus")]
-        for col in cols:
+
+        # Remove also any components that are either located on these buses
+        # or connected to at least with one port to any of these buses
+        bus_cols = [col for col in eur.c[comp].static.columns if col.startswith("bus")]
+        for col in bus_cols:
             idx = eur.c[comp].static.loc[eur.c[comp].static[col] == "GB00"].index
             eur.remove(comp, idx)
 
@@ -40,34 +44,65 @@ def merge_gb_tyndp(
     eur_elec_buses = eur.buses[eur.buses.carrier == "AC"].index
 
     # prepare gb network
-    non_gb_buses = gb.buses[
-        (gb.buses.carrier == "AC") & ~(gb.buses.index.str.contains("GB"))
+    non_gb_buses = gb.buses[~(gb.buses.index.str.contains("GB"))]
+    non_gb_ac_buses = gb.buses[
+        ~(gb.buses.index.str.contains("GB")) & (gb.buses.carrier == "AC")
     ]
-    non_gb_buses_h2 = gb.buses[
-        (gb.buses.carrier == "H2") & ~(gb.buses.index.str.contains("GB"))
+    non_gb_h2_buses = gb.buses[
+        ~(gb.buses.index.str.contains("GB")) & (gb.buses.carrier == "H2")
     ]
 
     gb_eur_busmap = {}
-    for name, bus in non_gb_buses.iterrows():
+    for name, bus in non_gb_ac_buses.iterrows():
+        # Find the bidding zones of the countries, matching to the GB model country node
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name)
         ]
+        # Preseve these bidding zones...
         buses_keep = ["DKW1", "NOS0", "FR00"]
         intersection = list(set(buses_keep) & set(country_matches))
+
+        # ... for all others map to the first best match
         gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
-    for name, bus in non_gb_buses_h2.iterrows():
+    for name, bus in non_gb_h2_buses.iterrows():
+        # Find the bidding zones of the countries, matching to the GB model country node
         country_matches = [
             eur_bus for eur_bus in eur_elec_buses if eur_bus.startswith(name[:-3])
         ]
+        # Preseve these bidding zones...
         buses_keep = ["DKW1 H2", "NOS0 H2", "FR00 H2"]
         intersection = list(set(buses_keep) & set(country_matches))
+        # ... for all others map to the first best match
         gb_eur_busmap[name] = intersection[0] if intersection else country_matches[0]
 
-    # these buses are no longer relevant
+    # Remove all non-GB buses from the network
     gb.remove("Bus", non_gb_buses.index)
 
-    # check all carriers are accounted for
+    # remove components associated with these buses
+    for comp in ["Store", "Generator", "Load", "StorageUnit"]:
+        non_gb_comp_idx = (
+            gb.c[comp].static[gb.c[comp].static.bus.isin(non_gb_buses.index)].index
+        )
+        gb.remove(comp, non_gb_comp_idx)
+
+    # Remove all Links and Lines where no port is connected to GB
+    for comp in gb.components[["Link", "Line"]]:
+        # Find all "bus\d" columns
+        bus_cols = [col for col in comp.static.columns if col.startswith("bus")]
+
+        # Determine all components for which all buses are connected to non-GB buses ...
+        comp_i = comp.static.loc[
+            (
+                (comp.static[bus_cols].isin(non_gb_buses.index))
+                | (comp.static[bus_cols] == "")
+            ).all(axis="columns")
+        ].index
+
+        # ... and remove those components from the GB model
+        gb.remove(comp.name, comp_i)
+
+    # check all carriers are accounted for in the mapping
     for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
         gb_carriers = gb.c[comp].static.carrier.unique()
         eur_carriers = eur.c[comp].static.carrier.unique()
@@ -80,31 +115,24 @@ def merge_gb_tyndp(
                         f"Cannot find mapped value for carrier {carrier} component type {comp}"
                     )
 
-    # connect to buses as named in open-tyndp
-    for comp in ["Link", "Store", "StorageUnit", "Generator", "Load"]:
-        cols = [col for col in gb.c[comp].static.columns if col.startswith("bus")]
-        for col in cols:
-            gb.c[comp].static[col] = gb.c[comp].static[col].replace(gb_eur_busmap)
+    # Prepare to connect the interconnectors in the GB model to the buses in open-tyndp
+    # Rename first, such that the connections match after merging the networks later
+    # (this only affects Link compnents. Lines are not inter-country and all other components
+    # are only attached to a single bus, which is either part of the model or not)
+    bus_cols = [col for col in gb.c["Link"].static.columns if col.startswith("bus")]
+    gb.c["Link"].static[bus_cols] = gb.c["Link"].static[bus_cols].replace(gb_eur_busmap)
 
-        # leave generators for now, they are reassigned in the add_co2_multilink function
-        if not comp == "Generator":
-            if "carrier" in gb.c[comp].static.columns:
-                gb.c[comp].static["carrier"] = (
-                    gb.c[comp].static["carrier"].replace(carrier_map[comp])
-                )
+    # Map carriers from GB model to carrier names in the openTYNDP model
+    # leave generators for now, they are reassigned in the add_co2_multilink function
+    for comp in gb.components[["Link", "Store", "StorageUnit", "Load"]]:
+        comp.static["carrier"] = comp.static["carrier"].replace(carrier_map[comp.name])
 
-    # remove load shedding elements
+    # remove load shedding elements - they are named slightly different in the GB model
     load_shedding_gens = gb.generators[gb.generators.carrier == "Load Shedding"]
     gb.remove("Generator", load_shedding_gens.index)
 
     # pypsa merge doesn't like overlapping components
     gb.remove("Carrier", gb.carriers.index.intersection(eur.carriers.index))
-    gb.remove("Bus", non_gb_buses_h2.index)
-
-    non_gb_lines = gb.lines[
-        ~(gb.lines.bus0.str.contains("GB")) & ~(gb.lines.bus1.str.contains("GB"))
-    ].index
-    gb.remove("lines", non_gb_lines)
 
     res = eur.merge(gb, with_time=True)
 
@@ -154,7 +182,7 @@ def add_waste_element(
 
     ref_waste_gens = n_gb.c["Generator"].static.loc[
         (n_gb.c["Generator"].static.carrier == "waste")
-        & (n_gb.c["Generator"].static.bus.str.match(r"GB \d{1,2}"))
+        & (n_gb.c["Generator"].static.bus.str.match(r"GB "))
     ]
 
     # Attach the electricity from waste generator as link to all GB buses with AC carrier
@@ -202,64 +230,89 @@ def convert_generators_to_links(
     to track CO2 emissions to atmosphere. Aligns generators with the cost given by the TYNDP model
     """
 
+    global_supply_map = n_merged.generators[
+        n_merged.generators.bus.str.startswith("EU")
+    ].set_index("carrier")
+
     # Some generation technologies in the TYNDP are represented by Link components
     # to track fuel use and emissions, rather than as Generators
     # Convert them from Generators to Links in the merged model, using the TYNDP assumptions for costs and efficiencies
     # The remaining technologies where technologies are represented as Generators in both models will be
     # aligned with their carrier names, but the components will not be converted to Links
     for gb_carrier, eur_carrier in carrier_map["Generator"].items():
-        gens = n_merged.generators[
-            (n_merged.generators.carrier == gb_carrier)
-            & (n_merged.generators.bus.str.startswith("GB "))
-        ]
-        # Change the carrier name for generators
-        n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
+        # check that the generator type isn't intended to stay as a generator (e.g. solar and other renewables)
+        if not (
+            ("solar" in eur_carrier)
+            or ("wind" in eur_carrier)
+            or ("geothermal" in eur_carrier)
+        ):
+            gens = n_merged.generators[
+                (n_merged.generators.carrier == gb_carrier)
+                & (n_merged.generators.bus.str.startswith("GB "))
+            ]
 
-        # Change from Generator to Link if the technology is represented as a Link in the TYNDP model
-        ref = n_eur.links[
-            (n_eur.links.carrier == eur_carrier)
-            & (n_eur.links.bus1.str.startswith("GB "))
-        ]
-        if not ref.empty and not gens.empty:
-            logger.info(
-                f"Converting {gb_carrier} generators to links with carrier {eur_carrier}"
-            )
+            # Change the carrier name for generators
+            n_merged.c["Generator"].static.loc[gens.index, "carrier"] = eur_carrier
 
-            n_merged.add(
-                "Link",
-                name=gens.index,
-                bus0=ref.bus0.mode().iloc[0],  # global supply bus
-                bus1=gens.bus,
-                bus2=ref.bus2.mode().iloc[
-                    0
-                ],  # co2 atmosphere for emitting generators or nothing
-                carrier=eur_carrier,
-                p_nom=gens.p_nom,
-                p_nom_extendable=gens.p_nom_extendable,
-                efficiency=ref.efficiency.mean(),
-                efficiency2=ref.efficiency2.mean(),
-                capital_cost=ref.capital_cost.mean(),
-                marginal_cost=ref.marginal_cost.mean(),
-                marginal_cost_quadratic=ref.marginal_cost_quadratic.mean(),  # not used currently
-            )
+            # Change from Generator to Link if the technology is represented as a Link in the TYNDP model
+            ref = n_eur.links[
+                (n_eur.links.carrier == eur_carrier)
+                & (n_eur.links.bus1.str.startswith("GB"))
+            ]
 
-            # Transfer constraints on dynamic p_min_pu and p_max_pu from the generator to the link if they exist
-            for p_lim in ["p_min_pu", "p_max_pu"]:
+            # Some emitting generators have no reference links that exist (e.g. waste)
+            if ref.empty and eur_carrier in global_supply_map.index:
+                ref = gens
+                ref = ref.assign(
+                    bus0=global_supply_map.loc[eur_carrier, "bus"],
+                    bus1=gens.bus,
+                    # for non emitters should be nothing/nan - but doesn't matter for accounting as long as efficiency is correctly 0
+                    bus2="co2 atmosphere",
+                    efficiency2=0.0,
+                )
+
+            if not gens.empty:
                 logger.info(
-                    f"Adding dynamic constraints {p_lim} for former {gb_carrier} generators"
-                )
-                mask = (
-                    n_gb.c["Generator"].dynamic[p_lim].columns.intersection(gens.index)
-                )
-                if mask.empty:
-                    continue
-
-                n_merged.c["Link"].dynamic[p_lim].loc[:, mask] = (
-                    n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+                    f"Converting {gb_carrier} generators to links with carrier {eur_carrier}"
                 )
 
-            # remove the generator after the link version is created
-            n_merged.remove("Generator", gens.index)
+                n_merged.add(
+                    "Link",
+                    name=gens.index,
+                    bus0=ref.bus0.mode().iloc[0],  # global supply bus
+                    bus1=gens.bus,
+                    bus2=ref.bus2.mode().iloc[
+                        0
+                    ],  # co2 atmosphere for emitting generators or nothing
+                    carrier=eur_carrier,
+                    p_nom=gens.p_nom,
+                    p_nom_extendable=gens.p_nom_extendable,
+                    efficiency=ref.efficiency.mean(),
+                    efficiency2=ref.efficiency2.mean(),
+                    capital_cost=ref.capital_cost.mean(),
+                    marginal_cost=ref.marginal_cost.mean(),
+                    marginal_cost_quadratic=ref.marginal_cost_quadratic.mean(),  # not used currently
+                )
+
+                # Transfer constraints on dynamic p_min_pu and p_max_pu from the generator to the link if they exist
+                for p_lim in ["p_min_pu", "p_max_pu"]:
+                    logger.info(
+                        f"Adding dynamic constraints {p_lim} for former {gb_carrier} generators"
+                    )
+                    mask = (
+                        n_gb.c["Generator"]
+                        .dynamic[p_lim]
+                        .columns.intersection(gens.index)
+                    )
+                    if mask.empty:
+                        continue
+
+                    n_merged.c["Link"].dynamic[p_lim].loc[:, mask] = (
+                        n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
+                    )
+
+                # remove the generator after the link version is created
+                n_merged.remove("Generator", gens.index)
 
     return n_merged
 
