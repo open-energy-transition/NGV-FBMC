@@ -284,9 +284,7 @@ rule solve_dispatch:
         co2_sequestration_potential=config["sector"]["co2_sequestration_potential"],
         renewable_carriers=config["electricity"]["renewable_carriers"],
         # Only the GB dispatch model defines custom extra functionality
-        custom_extra_functionality=gbdispatchmodel(
-            "scripts/gb_model/dispatch/custom_constraints.py"
-        ),
+        custom_extra_functionality="scripts/gb_model/dispatch/custom_constraints.py",
         # Files required for the custom extra functionality of the GB dispatch model
         # (they are read as params, not as input files for whatever reasons)
         # TODO make sure logic is in solve_network
