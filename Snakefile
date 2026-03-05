@@ -221,7 +221,7 @@ rule prepare_scenario_SQ:
         explicit_allocation=config["explicit_allocation"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        model_tf=rules.prepare_scenario_TF.output.model,
+        model_tf="results/dispatch/networks/TF/{planning_horizons}.nc",
     output:
         model="resources/base/networks/SQ/{planning_horizons}.nc",
         line_limits="resources/base/line_limits/{planning_horizons}.csv",
