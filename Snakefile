@@ -205,7 +205,7 @@ rule prepare_scenario_TF:
         forecast_errors=config["forecast_errors"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
+        forecast_errors=rules.run_phase01_model_as_rule.output.forecast_errors,
     output:
         model="resources/base/networks/TF/{planning_horizons}.nc",
     log:
