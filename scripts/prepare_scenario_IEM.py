@@ -23,6 +23,7 @@ def merge_gb_tyndp(
             eur.c[comp]
             .static[
                 eur.c[comp].static.index.str.contains("GB00")
+                | eur.c[comp].static.index.str.contains("GB H2")
                 | eur.c[comp].static.index.str.contains("GBOH")
             ]
             .index
@@ -314,6 +315,16 @@ def convert_generators_to_links(
                 # remove the generator after the link version is created
                 n_merged.remove("Generator", gens.index)
 
+    # Merge adds some additional attributes that all Link components need to have
+    # fill in those for the GB model with bool values
+    n_merged.c["Link"].static["reversed"] = (
+        n_merged.c["Link"].static["reversed"].fillna(False).astype(bool)
+    )
+    # Drop `project_status` no longer required downstream
+    n_merged.c["Link"].static = n_merged.c["Link"].static.drop(
+        columns=["project_status"], errors="raise"
+    )
+
     return n_merged
 
 
@@ -445,6 +456,22 @@ def reset_network(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def remove_unused_carriers(n: pypsa.Network) -> pypsa.Network:
+    """
+    Removes carriers that are not used by any component in the network after merging.
+    """
+    carriers = set()
+    for comp in n.components[
+        ["Link", "Store", "StorageUnit", "Generator", "Load", "Bus"]
+    ]:
+        carriers = carriers.union(comp.static.carrier)
+
+    non_used_carriers = set(n.carriers.index) - carriers
+    n.remove("Carrier", non_used_carriers)
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -505,6 +532,8 @@ if __name__ == "__main__":
 
         if c.static[col].any():
             logger.info(f"{c}: {c.static.query(f'{col}').index.tolist()}")
+
+    n_merged = remove_unused_carriers(n_merged)
 
     # Never hurts
     n_merged.consistency_check()
