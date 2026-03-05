@@ -16,6 +16,10 @@ def merge_gb_tyndp(
     """
     Combines the TYNDP (EUR) and GB-dispatch (GB) models
     """
+
+    # No one knows where this came from. It serves no purpose.
+    eur.remove("Bus", "EU")
+
     # prepare eur network by removing GB elements from the openTYNDP model
     # (i.e. either GB based or offshore hub buses)
     for comp in ["Bus", "StorageUnit", "Link", "Store", "Generator", "Load"]:
@@ -34,7 +38,11 @@ def merge_gb_tyndp(
         # or connected to at least with one port to any of these buses
         bus_cols = [col for col in eur.c[comp].static.columns if col.startswith("bus")]
         for col in bus_cols:
-            idx = eur.c[comp].static.loc[eur.c[comp].static[col] == "GB00"].index
+            idx = (
+                eur.c[comp]
+                .static.loc[(eur.c[comp].static[col].isin(["GB00", "GB H2"]))]
+                .index
+            )
             eur.remove(comp, idx)
 
     # create a mapping for the old GB names to the EUR names in TYNDP
@@ -536,7 +544,7 @@ if __name__ == "__main__":
     n_merged = remove_unused_carriers(n_merged)
 
     # Never hurts
-    n_merged.consistency_check()
+    n_merged.consistency_check(strict="all")
 
     # Export to file
     n_merged.export_to_netcdf(snakemake.output["model"])
