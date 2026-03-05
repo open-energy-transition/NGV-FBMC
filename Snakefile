@@ -317,9 +317,9 @@ rule solve_dispatch:
         network="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
         config="results/dispatch/configs/{scenario}/{planning_horizons}.yaml",
     log:
-        solver="results/dispatch/logs/solve_network/{scenario}/{planning_horizons}_solver.log",
-        memory="results/dispatch/logs/solve_network/{scenario}/{planning_horizons}_memory.log",
-        python="results/dispatch/logs/solve_network/{scenario}/{planning_horizons}_python.log",
+        solver="logs/solve_dispatch/{scenario}/{planning_horizons}_solver.log",
+        memory="logs/solve_dispatch/{scenario}/{planning_horizons}_memory.log",
+        python="logs/solve_dispatch/{scenario}/{planning_horizons}_python.log",
     benchmark:
         "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{planning_horizons}"
     threads: config["solving"]["solver_options"]["threads"]
