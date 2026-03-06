@@ -181,6 +181,7 @@ rule prepare_scenario_IEM:
         "Preparing a combined model based on phase NGV-IEM model and GB Dispatch Model network for year {wildcards.planning_horizons} (scenario: IEM - integrated energy market)."
     params:
         carrier_map=config["carrier_mapping"],
+        time_aggregation=config["time_aggregation"],
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
