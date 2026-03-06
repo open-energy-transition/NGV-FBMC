@@ -145,73 +145,13 @@ def restrict_electricity_flows(
     return n
 
 
-def extend_primary_fuel_sources(n):
-    primary_fuel_sources = [
-        "EU lignite",
-        "EU coal",
-        "EU oil primary",
-        "EU uranium",
-        "EU gas",
-    ]
-    n.generators.loc[primary_fuel_sources, "p_nom_extendable"] = True
-    return n
-
-
-def add_electrolysis_constraints(n):
-    """Enforce the electrolysis dispatch to the optimal dispatch found in the solved network."""
-    logger.info(
-        "Constraining electrolysis dispatch to the optimal dispatch found in the previously solved network."
-    )
-    electrolysis_i = n.links[n.links.carrier == "H2 Electrolysis"].index
-    n.links_t.p_set.loc[:, electrolysis_i] = n.links_t.p0.loc[:, electrolysis_i]
-    return n
-
-
-def remove_components_added_in_solve_network_py(n: pypsa.Network) -> pypsa.Network:
-    """Removes components that were added in solve_network.py; we're planing on running this network through the same step again and want to avoid adding the components again."""
-
-    logger.info("Removing components added in solve_network.py")
-
-    # These components are not always part of the network, so
-    # we check for their existence first
-    if "co2_sequestration_limit" in n.global_constraints.index:
-        n.remove(
-            class_name="GlobalConstraint",
-            name="co2_sequestration_limit",
-        )
-
-    if "load" in n.carriers.index:
-        n.remove(
-            class_name="Carrier",
-            name="load",
-        )
-        gens_i = n.generators.query("`name`.str.endswith(' load')").index
-        n.remove(
-            class_name="Generator",
-            name=gens_i,
-        )
-
-    if "curtailment" in n.carriers.index:
-        n.remove(
-            class_name="Carrier",
-            name="curtailment",
-        )
-        gens_i = n.generators.query("`name`.str.endswith(' curtailment')").index
-        n.remove(
-            class_name="Generator",
-            name=gens_i,
-        )
-
-    return n
-
-
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
 
         snakemake = mock_snakemake(
             Path(__file__).stem,
-            year=2030,
+            planning_horizons=2030,
         )
     configure_logging(snakemake)
 
@@ -233,17 +173,8 @@ if __name__ == "__main__":
         upper_bound=1.05,
     )
 
-    # Ensure electrolysis dispatch is fixed to the optimal dispatch in the previous run
-    n = add_electrolysis_constraints(n)
-
     # Doesn't hurt
-    n.consistency_check()
+    n.consistency_check(strict=None)
 
-    # Safe modified network
+    # Save modified network
     n.export_to_netcdf(snakemake.output["model"])
-
-    # TODO from previous phase, probably not needed this time,
-    # should already be taken care of in the prepare_scenario_IEM script
-    # n.optimize.fix_optimal_capacities()
-    # n = extend_primary_fuel_sources(n)
-    # n = remove_components_added_in_solve_network_py(n)
