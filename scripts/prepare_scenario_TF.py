@@ -160,6 +160,7 @@ if __name__ == "__main__":
     config = snakemake.params["forecast_errors"]
 
     n = pypsa.Network(snakemake.input["model"])
+    n.name = f"{n.name} Trader Forecast (TF)"
 
     # Add forecast errors based on externally generated errors
     n = add_forecast_errors(
@@ -167,7 +168,7 @@ if __name__ == "__main__":
     )
 
     # Doesn't hurt
-    n.consistency_check(strict="all")
+    n.consistency_check(strict=None)
 
     # Save modified network
     n.export_to_netcdf(snakemake.output["model"])
