@@ -84,6 +84,13 @@ carrier_mapping:
     Residential Heat DSR: battery
     EV V2G: home battery
 
+time_aggregation:
+  enable: true
+  method: segment
+  parameters:
+    num_segments: 2190 # 4x smaller snapshots size
+    exclude_attrs: ["e_min_pu", "e_max_pu"] # Concern from GB model: demand-side flexibility implemented via store. Concern: Step changes could confuse the segmentation algorithm
+
 solving:
   options:
     load_shedding: 4e3
