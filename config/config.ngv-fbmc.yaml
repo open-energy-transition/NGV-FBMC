@@ -119,19 +119,20 @@ explicit_allocation:
   # "GBOH001-DKWOH01-Offshore DC-2030" and "GBOH001-DKWOH01-Offshore DC-2040"
   connections:
     - Aminth
+    - BritNed
     - Cronos
     - ElecLink
     - FAB Link
     - Gridlink
     - IFA\d? # Matches IFA and IFA2
     - Kulizumboo
-    - LionLink \(EuroLink\)
+      # - LionLink \(EuroLink\) # Not build in newer versions
     - NS Link \(NSL\)
     - Nautilus
     - Nemo
     - NeuConnect
     - SENECA
-    - Tarchon
+      # - Tarchon # Not build in newer versions
     - Viking Link
       # Connected to IE/NI - optimal allocation
       # - East-West
