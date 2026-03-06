@@ -94,7 +94,8 @@ time_aggregation:
 solving:
   options:
     load_shedding: 4e3
-    noisy_costs: False # Upstream models already run solve_network once, so no need to add noise here again
+    noisy_costs: false # Upstream models already run solve_network once, so no need to add noise here again
+    include_objective_constant: false
   solver:
     name: gurobi
     options: gurobi-default
