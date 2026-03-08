@@ -118,14 +118,29 @@ rule run_gbdispatchmodel_as_rule:
             "config/config.gb-dispatch.yaml",
         ],
     output:
-        network_dispatch=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
+        networks_dispatch=expand(
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
+            ),
+            planning_horizons=["2030", "2040"],
         ),
-        network_redispatch=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+        networks_redispatch=expand(
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            ),
+            planning_horizons=["2030", "2040"],
         ),
-        results_dispatch=gbdispatchmodel(
-            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+        results_dispatch=expand(
+            gbdispatchmodel(
+                "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            ),
+            planning_horizons=["2030", "2040"],
+        ),
+        strike_prices=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
+        ),
+        bid_offer_multipliers=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
         ),
     shell:
         """
@@ -331,12 +346,33 @@ rule solve_dispatch:
         "scripts/solve_network.py"
 
 
+# WIP
+rule calc_interconnector_bid_offer_profile:
+    message:
+        "Calculate interconnector bid/offer profiles"
+    input:
+        bids_and_offers=rules.run_gbdispatchmodel_as_rule.output.bid_offer_multipliers,
+        unconstrained_result="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+    output:
+        bid_offer_profile="resources/redispatch/interconnector_bid_offer_profile/{scenario}/{planning_horizons}.csv",
+    log:
+        "logs/calc_interconnector_bid_offer_profile/{scenario}/{planning_horizons}.log",
+    script:
+        "scripts/calc_interconnector_bid_offer_profile.py"
+
+
+# TODO
 rule prepare_redispatch:
     message:
         "Preparing redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
     input:
+        network="resources/base/networks/{scenario}/{planning_horizons}.nc",
         dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
-        model="resources/base/networks/{scenario}/{planning_horizons}.nc",
+        strike_prices=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
+        ),
+        # calc_bid_offer_interconnector
+        # calc_bid_offer_multipliers
     output:
         redispatch_model="resources/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
     log:
