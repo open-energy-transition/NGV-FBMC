@@ -18,7 +18,6 @@ import pandas as pd
 from scripts._helpers import (
     configure_logging,
 )
-from scripts.prepare_scenario_SQ import add_electrolysis_constraints
 
 logger = logging.getLogger(__name__)
 
@@ -154,16 +153,14 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             Path(__file__).stem,
-            year=2030,
+            planning_horizons=2030,
         )
     configure_logging(snakemake)
 
     config = snakemake.params["forecast_errors"]
 
     n = pypsa.Network(snakemake.input["model"])
-
-    # Ensure electrolysis dispatch is fixed to the optimal dispatch in the previous run
-    n = add_electrolysis_constraints(n)
+    n.name = f"{n.name} Trader Forecast (TF)"
 
     # Add forecast errors based on externally generated errors
     n = add_forecast_errors(
@@ -171,13 +168,7 @@ if __name__ == "__main__":
     )
 
     # Doesn't hurt
-    n.consistency_check()
+    n.consistency_check(strict=None)
 
     # Save modified network
     n.export_to_netcdf(snakemake.output["model"])
-
-    # TODO from previous phase, probably not needed this time,
-    # should already be taken care of in the prepare_scenario_IEM script
-    # n.optimize.fix_optimal_capacities()
-    # n = extend_primary_fuel_sources(n)
-    # n = remove_components_added_in_solve_network_py(n)

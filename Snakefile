@@ -1,13 +1,13 @@
-from snakemake.common.configfile import load_configfile
-from snakemake.utils import update_config
+configfile: "config/config.default.yaml"
+configfile: "config/plotting.default.yaml"
+configfile: "config/benchmarking.default.yaml"
+configfile: "config/config.tyndp.yaml"
+configfile: "config/config.ngv-fbmc.yaml"
 
 
 wildcard_constraints:
     planning_horizons="2030|2040",
     scenario="IEM|TF|SQ|FBMC",
-
-
-configfile: "config/config.ngv-fbmc.yaml"
 
 
 # Notes about limitations in integrating existing workflows as modules:
@@ -82,9 +82,12 @@ rule run_phase01_model_as_rule:
         results_noce_2030=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___2030_no_ce.nc"
         ),
-        results_noce_2040=ngviemmodel(
-            "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
+        offshore_zone_trajectories=ngviemmodel(
+            "resources/ngv-iem/latest/offshore_zone_trajectories.csv"
         ),
+        # results_noce_2040=ngviemmodel(
+        #     "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
+        # ),
     shell:
         """
         pixi run \
@@ -160,17 +163,30 @@ rule run_gbdispatchmodel_as_rule:
 # 4. Setup the redispatch logic
 # Use the logic from the GB Dispatch Model to run it on the combined networks
 
+RESULTS = "results/"
+
+
+rule all_IEM:
+    message:
+        "Collecting IEM related files"
+    input:
+        lambda w: expand(
+            (RESULTS + "dispatch/networks/IEM/{planning_horizonss}.nc"),
+            **config["scenario"],
+        ),
+
 
 rule prepare_scenario_IEM:
     message:
         "Preparing a combined model based on phase NGV-IEM model and GB Dispatch Model network for year {wildcards.planning_horizons} (scenario: IEM - integrated energy market)."
     params:
         carrier_map=config["carrier_mapping"],
+        time_aggregation=config["time_aggregation"],
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
@@ -190,7 +206,7 @@ rule prepare_scenario_TF:
         forecast_errors=config["forecast_errors"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        forecast_errors=ngviemmodel("data/ngv_iem/relative_errors.parquet"),
+        forecast_errors=rules.run_phase01_model_as_rule.output.forecast_errors,
     output:
         model="resources/base/networks/TF/{planning_horizons}.nc",
     log:
@@ -206,7 +222,7 @@ rule prepare_scenario_SQ:
         explicit_allocation=config["explicit_allocation"],
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        model_tf=rules.prepare_scenario_TF.output.model,
+        model_tf="results/dispatch/networks/TF/{planning_horizons}.nc",
     output:
         model="resources/base/networks/SQ/{planning_horizons}.nc",
         line_limits="resources/base/line_limits/{planning_horizons}.csv",
@@ -243,25 +259,76 @@ rule prepare_scenario_FBMC:
         "scripts/prepare_scenario_FBMC.py"
 
 
+rule prepare_dispatch:
+    message:
+        "Preparing dispatch for year {wildcards.planning_horizons} and scenario {wildcards.scenario}."
+    params:
+        # Important: Disable GB model load shedding overwrite with this setting
+        # Load shedding is handled elsewhere
+        load_shedding_cost_above_marginal=None,
+    input:
+        network="resources/base/networks/{scenario}/{planning_horizons}.nc",
+    output:
+        network="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
+    log:
+        "logs/prepare_dispatch/{scenario}/{planning_horizons}.log",
+    script:
+        "scripts/prepare_dispatch.py"
+
+
 rule solve_dispatch:
     message:
         "Running the dispatch for the combined model for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
+    params:
+        solving=config["solving"],
+        foresight=config["foresight"],
+        co2_sequestration_potential=config["sector"]["co2_sequestration_potential"],
+        renewable_carriers=config["electricity"]["renewable_carriers"],
+        # Only the GB dispatch model defines custom extra functionality
+        custom_extra_functionality="scripts/gb_model/dispatch/custom_constraints.py",
+        # Files required for the custom extra functionality of the GB dispatch model
+        # (they are read as params, not as input files for whatever reasons)
+        # TODO make sure logic is in solve_network
+        nuclear_max_annual_capacity_factor=config["conventional"]["nuclear"][
+            "max_annual_capacity_factor"
+        ],
+        nuclear_min_annual_capacity_factor=config["conventional"]["nuclear"][
+            "min_annual_capacity_factor"
+        ],
+        # openTYNDP specific: Not used (because OH trajectories are off)
+        # but keeping for consistency to be able to reuse code from the openTYNDP model
+        renewable_carriers_tyndp=config["electricity"]["tyndp_renewable_carriers"],
     input:
-        model="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
+        network="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
+        # TODO - add logic
         ptdf=branch(
-            rules.prepare_scenario_FBMC.input.ptdf,
             lambda wildcards: wildcards.scenario == "FBMC",
+            rules.prepare_scenario_FBMC.input.ptdf,
         ),
         ram=branch(
-            rules.prepare_scenario_FBMC.input.ram,
             lambda wildcards: wildcards.scenario == "FBMC",
+            rules.prepare_scenario_FBMC.input.ram,
         ),
+        # TYNDP specific
+        # TODO make sure logic is in solve_network
+        offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
-        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+        network="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+        config="results/dispatch/configs/{scenario}/{planning_horizons}.yaml",
     log:
-        "logs/solve_dispatch/{scenario}/{planning_horizons}.log",
+        solver="logs/solve_dispatch/{scenario}/{planning_horizons}_solver.log",
+        memory="logs/solve_dispatch/{scenario}/{planning_horizons}_memory.log",
+        python="logs/solve_dispatch/{scenario}/{planning_horizons}_python.log",
+    benchmark:
+        "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{planning_horizons}"
+    threads: config["solving"]["solver_options"]["threads"]
+    resources:
+        mem_mb=config["solving"]["mem_mb"],
+        runtime=config["solving"]["runtime"],
+    shadow:
+        config["run"]["use_shadow_directory"]
     script:
-        "scripts/solve_dispatch.py"
+        "scripts/solve_network.py"
 
 
 rule prepare_redispatch:

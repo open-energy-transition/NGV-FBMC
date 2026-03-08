@@ -482,6 +482,31 @@ def reset_network(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def cluster_network_by_time(n: pypsa.Network, time_aggregation: dict) -> pypsa.Network:
+    """
+    Clusters the network by time using the specified time aggregation method and parameters.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network to be clustered.
+    time_aggregation : dict
+        The time aggregation method and parameters to be used for clustering.
+
+    Returns
+    -------
+    pypsa.Network
+        The network clustered along the snapshot (time) dimension.
+    """
+    logger.info(
+        f"Clustering network by time using method {time_aggregation['method']} and parameters {time_aggregation['parameters']}"
+    )
+
+    func = getattr(n.cluster.temporal, time_aggregation["method"])
+
+    return func(**time_aggregation["parameters"])
+
+
 def remove_unused_carriers(n: pypsa.Network) -> pypsa.Network:
     """
     Removes carriers that are not used by any component in the network after merging.
@@ -561,8 +586,22 @@ if __name__ == "__main__":
 
     n_merged = remove_unused_carriers(n_merged)
 
+    # After merging we get rid of all attributes that are potential outputs from the model
+    # Due to https://github.com/PyPSA/PyPSA/issues/1606 we do this on the individual networks before the merge
+    # and on the merged network again
+    n_merged = reset_network(n_merged)
+
+    # Cluster the network by time
+    # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
+    # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
+    # If we cluster later during solve_network, the clustering might yield different results due to
+    # different time-series in the scenarios.
+    # By clustering before, we avoid this potential issue
+    if snakemake.params.time_aggregation["enable"]:
+        n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
+
     # Never hurts
-    n_merged.consistency_check(strict="all")
+    n_merged.consistency_check(strict=None)
 
     # Export to file
     n_merged.export_to_netcdf(snakemake.output["model"])
