@@ -131,6 +131,24 @@ def merge_gb_tyndp(
     bus_cols = [col for col in gb.c["Link"].static.columns if col.startswith("bus")]
     gb.c["Link"].static[bus_cols] = gb.c["Link"].static[bus_cols].replace(gb_eur_busmap)
 
+    # Manual correction necessary, as there is not GBNI equivalent in GB model
+    # and interconnectors GBNI <-> GB are connected to IE bus in GB model
+    for link_name in ["Gallant", "Moyle"]:
+        link = gb.links.query("`name`.str.contains(@link_name)")
+        if len(link) != 1:
+            logger.warning(
+                f"Expected exactly one interconnector with name containing {link_name}. "
+                f"Found {len(link)}. Please check the GB model for the interconnectors and their connections to buses. "
+                f"Skipping manual correction for {link_name} interconnector."
+            )
+            continue
+        if link["bus1"].iloc[0] != "IE00":
+            logger.error(
+                f"Interconnector {link_name} is not connected to IE00 bus in GB model as expected."
+                f" Please check the GB model for the interconnectors and their connections to buses."
+            )
+        gb.c["Link"].static.loc[link.index, "bus1"] = "GBNI"
+
     # Map carriers from GB model to carrier names in the openTYNDP model
     # leave generators for now, they are reassigned in the add_co2_multilink function
     for comp in gb.components[["Link", "Store", "StorageUnit", "Load"]]:
