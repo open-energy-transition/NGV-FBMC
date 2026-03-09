@@ -160,7 +160,7 @@ if __name__ == "__main__":
     config = snakemake.params["forecast_errors"]
 
     n = pypsa.Network(snakemake.input["model"])
-    n.name = f"{n.name} Trader Forecast (TF)"
+    n.name = f"Trader Forecast (TF) - {snakemake.wildcards.planning_horizons}"
 
     # Add forecast errors based on externally generated errors
     n = add_forecast_errors(

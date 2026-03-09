@@ -158,7 +158,7 @@ if __name__ == "__main__":
     config = snakemake.params["explicit_allocation"]
 
     n = pypsa.Network(snakemake.input["model"])
-    n.name = f"{n.name} Status Quo (SQ)"
+    n.name = f"Status Quo (SQ) - {snakemake.wildcards.planning_horizons}"
 
     line_limits = extract_line_limits(n_fp=snakemake.input["model_tf"], config=config)
 

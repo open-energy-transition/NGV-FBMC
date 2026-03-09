@@ -603,5 +603,8 @@ if __name__ == "__main__":
     # Never hurts
     n_merged.consistency_check(strict=None)
 
+    # Give the new network a proper name
+    n.name = f"Integrated Energy Market (IEM) - {snakemake.wildcards.planning_horizons}"
+
     # Export to file
     n_merged.export_to_netcdf(snakemake.output["model"])
