@@ -216,15 +216,65 @@ def marginal_costs_bus(bus: str, network: pypsa.Network) -> pd.DataFrame:
         pypsa model to be finalized
     """
 
-    return pd.concat(
+    # exclude_carriers = ["load"]
+    exclude_carriers = []
+    simple = pd.concat(
         [
-            x.static.query("bus == @b and carrier != 'load'", local_dict={"b": bus})
+            x.static.query(
+                "bus == @b and carrier not in @exclude_carriers",
+                local_dict={"b": bus, "exclude_carriers": exclude_carriers},
+            )
             .groupby("carrier")
             .marginal_cost.mean()
             .round(3)
             for x in network.components[["Generator", "StorageUnit"]]
         ]
     )
+
+    # Links are a bit more complicated, need to consider inputs and outputs
+    # We make a few simplifying assumptions here, namely ignore snapshot weightings
+    # and that the efficiency is constant
+    # We exclude certain carriers which are not relevant for this calculation
+    exclude_carriers = [
+        "load",
+        "DC",
+        "DC_OH",
+        "H2 Electrolysis",
+        "battery charger",
+        "electricity distribution grid",
+    ]
+    prices = network.c.buses.dynamic.marginal_price
+    links = network.c.links.static.query(
+        "`bus1` == @bus and `carrier` not in @exclude_carriers",
+        local_dict={"bus": bus, "exclude_carriers": exclude_carriers},
+    )
+
+    bus0 = links["bus0"]
+    bus0_prices = prices[bus0]
+    bus0_prices.columns = links.index
+    bus0_prices /= links["efficiency"]
+
+    bus2 = links["bus2"].where(links["bus2"].str.len() > 0, np.nan).dropna()
+    bus2_prices = prices[bus2]
+    bus2_prices.columns = bus2.index
+    bus2_prices = (bus2_prices / links["efficiency"] * links["efficiency2"]).fillna(0)
+    bus2_prices = bus2_prices * -1  # CO2 prices are negative
+
+    links_marginal_cost = (
+        bus0_prices + bus2_prices + links["marginal_cost"] / links["efficiency"]
+    ).mean()
+
+    # Map link names to carrier names
+    links_marginal_cost.index = links_marginal_cost.index.map(links["carrier"])
+
+    links_marginal_cost = (
+        links_marginal_cost.groupby(links_marginal_cost.index).mean().round(3)
+    )
+
+    # Rename index to "carrier"
+    links_marginal_cost.index.name = "carrier"
+
+    return pd.concat([simple, links_marginal_cost])
 
 
 def get_gb_neighbour_countries(network: pypsa.Network) -> np.ndarray:
@@ -253,7 +303,9 @@ def get_gb_neighbour_countries(network: pypsa.Network) -> np.ndarray:
             .unique()
             .tolist()
         )
-        countries = [x for x in countries if "GB" not in x]
+        countries = [
+            x for x in countries if "GB " not in x or x == "GBNI"
+        ]  # GBNI is a special case, it is also allowed. No present in GB model, but in openTYNDP
 
     return countries
 

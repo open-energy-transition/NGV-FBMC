@@ -114,7 +114,7 @@ def get_eur_marginal_generator(
     ).index
 
     # Function to identify marginal carrier
-    def _identify_marginal_carrier(electricity_price):
+    def _identify_marginal_carrier(electricity_price, marginal_price_range):
         # Check if electricity price falls in marginal price range of any of the generators
         marginal_carrier_rows = marginal_price_range.loc[
             (electricity_price >= marginal_price_range["min"])
@@ -123,33 +123,41 @@ def get_eur_marginal_generator(
 
         # If electricity price does not match any of the generator marginal price ranges
         if marginal_carrier_rows.empty:
-            # Get rows where electricity price lies in between the marginal price ranges of two generators
-            # i.e., exceeds the maximum of one row and lesser than the minimum of next row
-            marginal_carrier_rows = pd.concat(
-                [
-                    # last row where marginal electricity price exceeds maximum of generator price range
-                    marginal_price_range[
-                        (marginal_price_range["max"] < electricity_price)
-                    ].iloc[-1],
-                    # first row where marginal electricity price is lesser than minimum of generator price range
-                    marginal_price_range[
-                        (marginal_price_range["min"] > electricity_price)
-                    ].iloc[0],
-                ],
-                axis=1,
-            ).T
+            # Check if electricity price is below all generators (e.g., excess renewables)
+            below_all = marginal_price_range["min"] > electricity_price
+            above_all = marginal_price_range["max"] < electricity_price
 
-            # The marginal generator is set as the generator which has the least deviation from
-            # the extremities of the two rows selected in the previous step
-            if (
-                electricity_price - marginal_carrier_rows.iloc[0]["max"]
-                > marginal_carrier_rows.iloc[1]["min"] - electricity_price
-            ):
-                # Minimum of generator marginal price range is closer to marginal electricity price
-                marginal_carrier_row = marginal_carrier_rows.iloc[1]
+            if below_all.all():
+                # Price is below all generators - use cheapest generator (first row)
+                marginal_carrier_row = marginal_price_range.iloc[0]
+            elif above_all.all():
+                # Price is above all generators - use most expensive generator (last row)
+                marginal_carrier_row = marginal_price_range.iloc[-1]
             else:
-                # Maximum of generator marginal price range in closer to marginal electricity price
-                marginal_carrier_row = marginal_carrier_rows.iloc[0]
+                # Get rows where electricity price lies in between the marginal price ranges of two generators
+                # i.e., exceeds the maximum of one row and lesser than the minimum of next row
+                rows_below = marginal_price_range[above_all]
+                rows_above = marginal_price_range[below_all]
+
+                marginal_carrier_rows = pd.concat(
+                    [
+                        rows_below.iloc[-1],  # last row below electricity price
+                        rows_above.iloc[0],  # first row above electricity price
+                    ],
+                    axis=1,
+                ).T
+
+                # The marginal generator is set as the generator which has the least deviation from
+                # the extremities of the two rows selected in the previous step
+                if (
+                    electricity_price - marginal_carrier_rows.iloc[0]["max"]
+                    > marginal_carrier_rows.iloc[1]["min"] - electricity_price
+                ):
+                    # Minimum of generator marginal price range is closer to marginal electricity price
+                    marginal_carrier_row = marginal_carrier_rows.iloc[1]
+                else:
+                    # Maximum of generator marginal price range in closer to marginal electricity price
+                    marginal_carrier_row = marginal_carrier_rows.iloc[0]
         else:
             # Row where marginal electricity price is within generator marginal price range
             marginal_carrier_row = marginal_carrier_rows.iloc[0]
@@ -179,7 +187,7 @@ def get_eur_marginal_generator(
         marginal_electricity_price = marginal_price_profile[bus].round(3)
         eur_marginal_gen_profile[[f"{bus} bid", f"{bus} offer"]] = (
             marginal_electricity_price.apply(
-                lambda x: _identify_marginal_carrier(x)
+                lambda x: _identify_marginal_carrier(x, marginal_price_range)
             ).tolist()
         )
         logger.info(
@@ -417,7 +425,9 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
 
-        snakemake = mock_snakemake(Path(__file__).stem, year=2022)
+        snakemake = mock_snakemake(
+            Path(__file__).stem, scenario="SQ", planning_horizons="2030"
+        )
 
     configure_logging(snakemake)
     set_scenario_config(snakemake)
