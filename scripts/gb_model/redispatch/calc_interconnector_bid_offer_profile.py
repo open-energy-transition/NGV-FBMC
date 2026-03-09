@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pypsa
 
-from scripts._helpers import configure_logging, set_scenario_config
+from scripts._helpers import configure_logging
 from scripts.gb_model._helpers import (
     filter_interconnectors,
     get_gb_neighbour_countries,
@@ -430,7 +430,6 @@ if __name__ == "__main__":
         )
 
     configure_logging(snakemake)
-    set_scenario_config(snakemake)
 
     interconnector_profile = compose_data(
         unconstrained_result=pypsa.Network(snakemake.input.unconstrained_result),
