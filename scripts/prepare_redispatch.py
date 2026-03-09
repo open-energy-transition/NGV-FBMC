@@ -315,36 +315,37 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
     return network
 
 
-def add_single_eur_bus(network: pypsa.Network, unconstrained_result: pypsa.Network):
+def add_eur_buses(network: pypsa.Network) -> pypsa.Network:
     """
-    Add a single EUR bus to simplify the network structure
+    Add end point buses for each interconnector for a simplified network structure.
 
     Parameters
     ----------
     network: pypsa.Network
-        Network to finalize
-    unconstrained_result: pypsa.Network
-        Result of the unconstrained optimization
+        Network with all but GB buses removed and the interconnectors dangling.
+        End points will be added to this network.
     """
+    interconnectors = filter_interconnectors(
+        network.c.links.static, "carrier in ['DC', 'ramp up', 'ramp down']"
+    )
 
-    network.add("Bus", "EUR", country="EUR")
+    buses = interconnectors[["bus1"]]
+    buses = buses.assign(country=buses["bus1"].str[:2])
+    buses = buses.drop_duplicates("bus1").set_index("bus1")
+
+    network.add("Bus", buses.index, country=buses["country"])
 
     network.add(
         "Store",
-        "EUR store",
-        bus="EUR",
+        name=buses.index,
+        suffix=" store",
+        bus=buses.index,
         e_nom=1e9,  # Large capacity to avoid energy constraints,
     )
 
-    # Change bus1 of all interconnectors to EUR
-    interconnectors = filter_interconnectors(
-        network.links, "carrier in ['DC', 'ramp up', 'ramp down']"
-    )
-    network.links.loc[interconnectors.index, "bus1"] = "EUR"
+    logger.info(f"Added {len(buses)} buses for the endpoints of all interconnectors")
 
-    logger.info(
-        "Added single EUR bus with a store and connected all interconnectors to it"
-    )
+    return network
 
 
 if __name__ == "__main__":
@@ -419,11 +420,11 @@ if __name__ == "__main__":
 
     network = drop_existing_eur_buses(network)
 
-    add_single_eur_bus(network, unconstrained_result)
+    network = add_eur_buses(network)
 
     if snakemake.params["unconstrain_lines_and_links"]:
         # Set line capacities to infinity, so only boundary capabilities bound the optimization instead of line capacities.
         copperplate_gb(network)
 
-    network.export_to_netcdf(snakemake.output.network)
+    network.name = f"{snakemake.wildcards.scenario} ({snakemake.wildcards.planning_horizons}) - redispatch"
     logger.info(f"Exported network to {snakemake.output.network}")
