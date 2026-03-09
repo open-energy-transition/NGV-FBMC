@@ -313,6 +313,35 @@ if __name__ == "__main__":
     renewable_strike_prices *= snakemake.params["GBP_to_EUR"]
     renewable_strike_prices.name = "strike_price_EUR_per_MWh"
 
+    # Map strike prices from original carriers to the modelled carrier equivalents
+    strike_price_mapping = snakemake.params["strike_price_mapping"]
+    # These mappings are partially 1:n, duplicate entries with the same strike price
+    renewable_strike_prices = (
+        pd.Series(strike_price_mapping)
+        .explode()
+        .to_frame("carrier")
+        .merge(renewable_strike_prices, left_index=True, right_index=True)
+        .set_index("carrier")
+    )["strike_price_EUR_per_MWh"]
+
+    # Expand the mappings for bids and offers as well (nice? No. Working? Yes!)
+    bids = bids_and_offers["bid_multiplier"]
+    offers = bids_and_offers["offer_multiplier"]
+    bids = (
+        pd.Series(strike_price_mapping)
+        .explode()
+        .to_frame("new_carrier")
+        .merge(pd.Series(bids, name="bids"), left_index=True, right_index=True)
+    ).set_index("new_carrier")["bids"]
+    offers = (
+        pd.Series(strike_price_mapping)
+        .explode()
+        .to_frame("new_carrier")
+        .merge(pd.Series(offers, name="offers"), left_index=True, right_index=True)
+    ).set_index("new_carrier")["offers"]
+    bids_and_offers["bid_multiplier"] = bids.to_dict()
+    bids_and_offers["offer_multiplier"] = offers.to_dict()
+
     # Select GB buses
     gb_buses = network.buses.query("country == 'GB'").index
 

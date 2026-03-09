@@ -368,6 +368,7 @@ rule prepare_redispatch:
         "Preparing redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
     params:
         GBP_to_EUR=config["GBP_to_EUR"],
+        strike_price_mapping=config["carrier_mapping"]["strike_price_mapping"],
     input:
         network="resources/base/networks/{scenario}/{planning_horizons}.nc",
         dispatch_result=rules.solve_dispatch.output.network,
