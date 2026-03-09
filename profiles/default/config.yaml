@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: NGV-FBMC contributors
+# SPDX-FileCopyrightText: Contributors to PyPSA-Eur <https://github.com/pypsa/pypsa-eur>
+#
+# SPDX-License-Identifier: MIT
+
+# See https://snakemake.readthedocs.io/en/stable/executing/cli.html#profiles
+
+logger: pypsa
+cores: 8
+storage-http-max-requests-per-second: 2
+keep-storage-local-copies: true
+resources:
+  parallel_solving: 1
