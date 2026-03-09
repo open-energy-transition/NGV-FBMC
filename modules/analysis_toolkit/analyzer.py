@@ -1,8 +1,8 @@
 import pypsa
 import pandas as pd
 
-from .helpers.results_computer_base import ResultsComputerBase
-from .helpers.results_computer_wrappers import metric
+from helpers.results_computer_base import ResultsComputerBase
+from helpers.results_computer_wrappers import metric
 
 
 class ResultsComputer(ResultsComputerBase):
@@ -15,8 +15,8 @@ class ResultsComputer(ResultsComputerBase):
 
     Callers can use: res.revenue.iem(**kwargs), res.revenue.diff(), res.revenue.sq(), res.revenue(n, **kwargs)
     """
-    def __init__(self, network_dict: dict[str, pypsa.Network]):
-        super().__init__(network_dict)
+    def __init__(self, year: int):
+        super().__init__(year=year)
 
     @metric
     def consumer_surplus(self, n: pypsa.Network, **kwargs):
@@ -53,3 +53,8 @@ class ResultsComputer(ResultsComputerBase):
     @metric
     def net_position(self, n: pypsa.Network, **kwargs):
         return NotImplementedError()
+
+
+if __name__ == "__main__":
+    rc = ResultsComputer(year=2030)
+    print()
