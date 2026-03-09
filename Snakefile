@@ -136,7 +136,7 @@ rule run_gbdispatchmodel_as_rule:
             ),
             planning_horizons=["2030", "2040"],
         ),
-        strike_prices=gbdispatchmodel(
+        renewable_strike_prices=gbdispatchmodel(
             "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
         ),
         bid_offer_multipliers=gbdispatchmodel(
@@ -370,16 +370,19 @@ rule prepare_redispatch:
         GBP_to_EUR=config["GBP_to_EUR"],
     input:
         network="resources/base/networks/{scenario}/{planning_horizons}.nc",
-        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
-        strike_prices=gbdispatchmodel(
+        dispatch_result=rules.solve_dispatch.output.network,
+        interconnector_bid_offer=rules.calc_interconnector_bid_offer_profile.output.bid_offer_profile,
+        # Unchanged from GB dispatch model
+        renewable_strike_prices=gbdispatchmodel(
             "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
         ),
-        # calc_bid_offer_interconnector
-        # calc_bid_offer_multipliers
+        bids_and_offers=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
+        ),
     output:
-        redispatch_model="resources/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
+        redispatch_model="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
     log:
-        "logs/prepare_redispatch/{scenario}_{planning_horizons}.log",
+        "logs/prepare_redispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/prepare_redispatch.py"
 

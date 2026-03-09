@@ -16,7 +16,7 @@ from typing import Literal
 import pandas as pd
 import pypsa
 
-from scripts._helpers import configure_logging, set_scenario_config
+from scripts._helpers import configure_logging
 from scripts.gb_model._helpers import filter_interconnectors
 from scripts.gb_model.dispatch.prepare_unconstrained_network import (
     copperplate_gb,
