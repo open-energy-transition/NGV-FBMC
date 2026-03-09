@@ -258,7 +258,7 @@ def create_up_down_plants(
         )
 
 
-def drop_existing_eur_buses(network: pypsa.Network):
+def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
     """
     Drop existing eur buses from the network
 
@@ -268,22 +268,49 @@ def drop_existing_eur_buses(network: pypsa.Network):
         Network to finalize
     """
 
-    eur_buses = network.buses.query("country != 'GB'").index
+    # Special buses that need to persist for the topology of the network to work
+    protected_buses = [
+        "EU waste",
+        "EU solid biomass",
+        "EU oil",
+        "EU uranium",
+        "EU gas",
+        "co2 atmosphere",
+    ]
+    eur_buses = network.buses.query(
+        "country != 'GB' and `index` not in @protected_buses"
+    ).index
+    gb_buses = network.buses.query("country == 'GB'").index
     network.remove("Bus", eur_buses)
 
     for comp in network.components[["Generator", "StorageUnit", "Store", "Load"]]:
-        network.remove(comp.name, comp.static.query("bus in @eur_buses").index)
+        network.remove(
+            comp.name,
+            comp.static.query("bus in @eur_buses").index,
+        )
 
     for comp in network.components[["Link", "Line"]]:
         # Drop HVDC links / AC lines that connect two eur buses
         network.remove(
             comp.name,
-            comp.static.query("bus0 in @eur_buses and bus1 in @eur_buses").index,
+            comp.static.query("bus0 not in @gb_buses or bus1 not in @gb_buses").index,
+        )
+
+    # Manual cleanup for some that are not easy to catch
+    cleanup_components = {"Load": ["EU solid biomass final energy demand"]}
+    for comp in network.components[list(cleanup_components.keys())]:
+        network.remove(
+            comp.name,
+            comp.static.query(
+                "index in @comps", local_dict={"comps": cleanup_components[comp.name]}
+            ).index,
         )
 
     logger.info(
         f"Dropped generators, storage units, links and loads connected to {eur_buses} from the network"
     )
+
+    return network
 
 
 def add_single_eur_bus(network: pypsa.Network, unconstrained_result: pypsa.Network):
@@ -388,7 +415,7 @@ if __name__ == "__main__":
         gb_buses,
     )
 
-    drop_existing_eur_buses(network)
+    network = drop_existing_eur_buses(network)
 
     add_single_eur_bus(network, unconstrained_result)
 
