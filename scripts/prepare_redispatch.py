@@ -223,9 +223,10 @@ def create_up_down_plants(
             # In the GB dispatch model we always connect to bus0, which is the GB bus
             # However for generating assets that are represented as Links (e.g. OCGT)
             # the relevant bus is bus1 (which is GB connected)
-            bus = g_up.bus1.where(g_up.bus1.str.match("GB\s+"), g_up.bus0)
-
-            # TODO check and continue here
+            # Emitting generators with bus0, bus1 and bus2 set: use bus1
+            # Buses with bus0 matching "GB\s+": use bus0
+            # otherwise use bus0
+            bus = g_up.bus1.where(g_up.bus2 != "", g_up.bus0)
 
         # Add generators that can increase dispatch
         base_network.add(
@@ -407,12 +408,12 @@ if __name__ == "__main__":
     fix_dispatch(network, dispatch_result, gb_buses)
 
     create_up_down_plants(
-        network,
-        dispatch_result,
-        bids_and_offers,
-        renewable_strike_prices,
-        interconnector_bid_offer_profile,
-        gb_buses,
+        base_network=network,
+        dispatch_result=dispatch_result,
+        bids_and_offers=bids_and_offers,
+        renewable_strike_prices=renewable_strike_prices,
+        interconnector_bid_offer_profile=interconnector_bid_offer_profile,
+        gb_buses=gb_buses,
     )
 
     network = drop_existing_eur_buses(network)
