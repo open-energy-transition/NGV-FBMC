@@ -291,10 +291,11 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
         )
 
     for comp in network.components[["Link", "Line"]]:
-        # Drop HVDC links / AC lines that connect two eur buses
+        # Drop all Links, except for those where bus0 or bus1 is a GB bus
+        # e.g. interconnectors or generating assets represented as Links (e.g. OCGT)
         network.remove(
             comp.name,
-            comp.static.query("bus0 not in @gb_buses or bus1 not in @gb_buses").index,
+            comp.static.query("bus0 not in @gb_buses and bus1 not in @gb_buses").index,
         )
 
     # Manual cleanup for some that are not easy to catch
