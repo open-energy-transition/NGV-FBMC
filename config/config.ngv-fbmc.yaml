@@ -2,6 +2,11 @@ run:
   prefix: ""
   name: "ngv-fbmc"
 
+# Conversion rate for GBP to EUR
+# Choosen consistently with the GB dispatch model
+# average in 2021: https://www.exchangerates.org.uk/GBP-EUR-spot-exchange-rates-history-2021.html#:~:text=This%20is%20the%20British%20Pound,rate%20in%202021%3A%201.1632%20EUR.
+GBP_to_EUR: 1.1632
+
 # Max and min annual capacity factors for the nuclear generators across the model
 conventional:
   nuclear:

@@ -318,6 +318,12 @@ if __name__ == "__main__":
     interconnector_bid_offer_profile = pd.read_csv(
         snakemake.input.interconnector_bid_offer, index_col="snapshot", parse_dates=True
     )
+
+    # Currency conversion to EUR
+    renewable_strike_prices *= snakemake.params["GBP_to_EUR"]
+    renewable_strike_prices.name = "strike_price_EUR_per_MWh"
+
+    # Select GB buses
     gb_buses = network.buses.query("country == 'GB'").index
 
     fix_dispatch(network, unconstrained_result, gb_buses)

@@ -366,6 +366,8 @@ rule calc_interconnector_bid_offer_profile:
 rule prepare_redispatch:
     message:
         "Preparing redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
+    params:
+        GBP_to_EUR=config["GBP_to_EUR"],
     input:
         network="resources/base/networks/{scenario}/{planning_horizons}.nc",
         dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
