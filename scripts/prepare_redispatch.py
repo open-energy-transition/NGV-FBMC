@@ -24,57 +24,46 @@ from scripts.gb_model.dispatch.prepare_unconstrained_network import (
 
 logger = logging.getLogger(__name__)
 
-LOAD_SHEDDING_REGEX = "Load Shedding"
-
 
 def fix_dispatch(
-    constrained_network: pypsa.Network,
-    unconstrained_result: pypsa.Network,
+    base_network: pypsa.Network,
+    dispatch_result: pypsa.Network,
     gb_buses: pd.Index,
 ):
     """
-    Fix dispatch of generators and storage units based on the result of unconstrained optimization
+    Fix dispatch of most network components based on the result of dispatch optimization
 
     Parameters
     ----------
-    constrained_network: pypsa.Network
-        Constrained network to finalize
-    unconstrained_result: pypsa.Network
-        Result of the unconstrained optimization
+    base_network: pypsa.Network
+        Base network to finalize
+    dispatch_result: pypsa.Network
+        Result of the dispatch optimization
     gb_buses: pd.Index
-        Index of GB buses
+        Index of GB buses to identify which components to fix
     """
 
     def _process_p_fix(dispatch_t: pd.DataFrame, p_nom: pd.DataFrame):
-        p_fix = (dispatch_t / p_nom).round(5).fillna(0)
-        p_fix = p_fix.loc[:, ~p_fix.columns.str.contains(LOAD_SHEDDING_REGEX)]
+        return (dispatch_t / p_nom).round(5).fillna(0)
 
-        return p_fix
+    for comp in dispatch_result.components[
+        ["Generator", "Link", "StorageUnit", "Store"]
+    ]:
+        if comp.name in ["Generator", "Store", "StorageUnit"]:
+            p_fix = comp.dynamic.p
 
-    for comp in unconstrained_result.components:
-        if comp.name not in ["Generator", "StorageUnit", "Link"]:
-            continue
-
-        if comp.name == "Generator":
-            p_max_fix = p_min_fix = _process_p_fix(comp.dynamic.p, comp.static.p_nom)
         elif comp.name == "Link":
-            # Only dispatch of interconnector links are to be fixed
-            interconnector_links = comp.static.query(
-                "carrier == 'DC' and bus0 in @gb_buses and bus1 not in @gb_buses"
+            # Do not fix the dispatch for intra-GB links
+            intra_gb_links = comp.static.query(
+                "`bus0` in @gb_buses and `bus1` in @gb_buses and `carrier` in ['DC']",
+                local_dict={"gb_buses": gb_buses},
             ).index
 
-            p_max_fix = p_min_fix = _process_p_fix(comp.dynamic.p0, comp.static.p_nom)[
-                interconnector_links
-            ]
-        elif comp.name == "StorageUnit":
-            # For storage units: the decision variables are `p_dispatch` and `p_store`.
-            # p = p_dispatch - p_store
-            # Refer https://docs.pypsa.org/latest/user-guide/optimization/storage/#storage-units
-            p_max_fix = _process_p_fix(comp.dynamic.p_dispatch, comp.static.p_nom)
-            p_min_fix = _process_p_fix(-1 * comp.dynamic.p_store, comp.static.p_nom)
+            other_links = comp.static.index.difference(intra_gb_links)
 
-        constrained_network.components[comp.name].dynamic.p_max_pu = p_max_fix
-        constrained_network.components[comp.name].dynamic.p_min_pu = p_min_fix
+            p_fix = comp.dynamic.p0.loc[:, other_links]
+
+        base_network.components[comp.name].dynamic.p_set = p_fix
 
         logger.info(f"Fixed the dispatch of {comp.name}")
 
@@ -301,14 +290,15 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
 
-        snakemake = mock_snakemake(Path(__file__).stem, year=2022)
+        snakemake = mock_snakemake(
+            Path(__file__).stem, planning_horizons=2030, scenario="IEM"
+        )
 
     configure_logging(snakemake)
-    set_scenario_config(snakemake)
 
     # Load input networks and parameters
     network = pypsa.Network(snakemake.input.network)
-    unconstrained_result = pypsa.Network(snakemake.input.unconstrained_result)
+    dispatch_result = pypsa.Network(snakemake.input.dispatch_result)
     bids_and_offers = pd.read_csv(
         snakemake.input.bids_and_offers, index_col="carrier"
     ).to_dict()
@@ -326,7 +316,7 @@ if __name__ == "__main__":
     # Select GB buses
     gb_buses = network.buses.query("country == 'GB'").index
 
-    fix_dispatch(network, unconstrained_result, gb_buses)
+    fix_dispatch(network, dispatch_result, gb_buses)
 
     create_up_down_plants(
         network,
