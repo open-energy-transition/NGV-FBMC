@@ -369,6 +369,7 @@ rule prepare_redispatch:
     params:
         GBP_to_EUR=config["GBP_to_EUR"],
         strike_price_mapping=config["carrier_mapping"]["strike_price_mapping"],
+        unconstrain_lines_and_links=config["redispatch"]["unconstrain_lines_and_links"],
     input:
         network="resources/base/networks/{scenario}/{planning_horizons}.nc",
         dispatch_result=rules.solve_dispatch.output.network,
