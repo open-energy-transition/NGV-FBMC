@@ -340,6 +340,7 @@ rule solve_dispatch:
     resources:
         mem_mb=config["solving"]["mem_mb"],
         runtime=config["solving"]["runtime"],
+        parallel_solving=1,
     shadow:
         config["run"]["use_shadow_directory"]
     script:
