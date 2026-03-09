@@ -110,8 +110,8 @@ def _apply_multiplier(
 
 
 def create_up_down_plants(
-    constrained_network: pypsa.Network,
-    unconstrained_result: pypsa.Network,
+    base_network: pypsa.Network,
+    dispatch_result: pypsa.Network,
     bids_and_offers: dict[str, dict[str, float]],
     renewable_strike_prices: pd.Series,
     interconnector_bid_offer_profile: pd.DataFrame,
@@ -122,10 +122,10 @@ def create_up_down_plants(
 
     Parameters
     ----------
-    constrained_network: pypsa.Network
-        Constrained network to finalize
-    unconstrained_result: pypsa.Network
-        Result of the unconstrained optimization
+    base_network: pypsa.Network
+        Base network to finalize
+    dispatch_result: pypsa.Network
+        Result of the dispatch optimization
     bids_and_offers: dict[str, float]
         Bid and offer multipliers for conventional carriers
     renewable_strike_prices: pd.DataFrame
@@ -135,31 +135,34 @@ def create_up_down_plants(
     gb_buses: pd.Index
         Index of GB buses
     """
-    for comp in constrained_network.components:
-        if comp.name not in ["Generator", "StorageUnit", "Link"]:
-            continue
+    for comp in base_network.components[["Generator", "StorageUnit", "Link"]]:
+        base_network.add("Carrier", [f"{comp.name} ramp up", f"{comp.name} ramp down"])
 
-        constrained_network.add(
-            "Carrier", [f"{comp.name} ramp up", f"{comp.name} ramp down"]
-        )
+        g = comp.static
 
-        g_up = comp.static.loc[~comp.static.index.str.contains(LOAD_SHEDDING_REGEX)]
-        g_down = comp.static.loc[~comp.static.index.str.contains(LOAD_SHEDDING_REGEX)]
-
-        if comp.name != "Link":
+        if comp.name in ["Generator", "StorageUnit"]:
             # Filter GB plants
-            g_up = g_up.query("bus in @gb_buses and p_nom != 0")
-            g_down = g_down.query("bus in @gb_buses and p_nom != 0")
-        else:
-            g_up = g_up.query(
-                "bus0 in @gb_buses and bus1 not in @gb_buses and p_nom != 0"
+            g = g.query(
+                "`bus` in @gb_buses and `p_nom` != 0", local_dict={"gb_buses": gb_buses}
             )
-            g_down = g_down.query(
-                "bus0 in @gb_buses and bus1 not in @gb_buses and p_nom != 0"
+        elif comp.name == "Link":
+            # Account for different port names and only
+            # add up/down plants for interconnectors that connect GB to other countries,
+            # and for all generation technologies that are represented as links (e.g. OCGT)
+            intra_gb_links = g.query(
+                "`bus0` in @gb_buses and `bus1` in @gb_buses and `carrier` in ['DC']",
+                local_dict={"gb_buses": gb_buses},
+            ).index
+            g = g.query(
+                "`index` not in @intra_gb_links and `p_nom` != 0",
+                local_dict={"intra_gb_links": intra_gb_links},
             )
+
+        g_up = g.copy()
+        g_down = g.copy()
 
         # Compute dispatch limits for the up and down generators
-        result_component = unconstrained_result.components[comp.name]
+        result_component = dispatch_result.components[comp.name]
         dynamic_p = (
             result_component.dynamic.p0
             if comp.name == "Link"
@@ -167,7 +170,7 @@ def create_up_down_plants(
         )
 
         up_limit = (
-            unconstrained_result.get_switchable_as_dense(comp.name, "p_max_pu")
+            dispatch_result.get_switchable_as_dense(comp.name, "p_max_pu")
             * result_component.static.p_nom
             - dynamic_p
         ).clip(0) / result_component.static.p_nom
@@ -175,50 +178,79 @@ def create_up_down_plants(
             down_limit = -dynamic_p / result_component.static.p_nom
         else:
             down_limit = (
-                unconstrained_result.get_switchable_as_dense(comp.name, "p_min_pu")
+                dispatch_result.get_switchable_as_dense(comp.name, "p_min_pu")
                 * result_component.static.p_nom
                 - dynamic_p
             ) / result_component.static.p_nom
 
         prices = {}
         for direction, df in [("offer", g_up), ("bid", g_down)]:
-            if comp.name != "Link":
-                # Add bid/offer multipliers for conventional generators
-                prices[direction] = _apply_multiplier(
-                    df,
-                    bids_and_offers[f"{direction}_multiplier"],
-                    renewable_strike_prices,
-                    direction,
-                )
-            else:
-                prices[direction] = interconnector_bid_offer_profile.filter(
-                    regex=f".* {direction}$"
-                ).rename(columns=lambda x: x.replace(" " + direction, ""))
+            # Create a shared price profile for all up/down plants including interconnectors
+            # the time-independent for conventional generators is casted to a time-dependent (fixed) profile
+            # to have one dataframe for all cases, because we represent fossil generation assets
+            # as Links rather than Generators (in the GB dispatch model)
+            # Add bid/offer multipliers for conventional generators
+            prices_static = _apply_multiplier(
+                df=df,
+                multiplier=bids_and_offers[f"{direction}_multiplier"],
+                renewable_strike_prices=renewable_strike_prices,
+                direction=direction,
+            )
+
+            prices_dynamic = interconnector_bid_offer_profile.filter(
+                regex=f".* {direction}$"
+            ).rename(columns=lambda x: x.replace(" " + direction, ""))
+
+            # Turn prices_static into a DataFrame with the same index as prices_dynamic
+            # by repeating the static prices for each timestamp in the dynamic prices
+            prices[direction] = pd.DataFrame(
+                [prices_static.values],
+                index=[prices_dynamic.index[0]],
+                columns=prices_static.index,
+            ).reindex(prices_dynamic.index, method="ffill")
+
+            # Overwrite the prices for interconnectors with the dynamic profile
+            # some entries are also present in the static data, but the dynamic
+            # profiles take precedence
+            prices[direction].loc[:, prices_dynamic.columns] = prices_dynamic
+
+        # Bus to connect the up/down plants to, same for _up and _down
+        bus = None
+        if comp.name in ["Generator", "StorageUnit"]:
+            # Simple case: connect to the same bus as the original plant
+            bus = g_up.bus
+        elif comp.name in ["Link", "Line"]:
+            # In the GB dispatch model we always connect to bus0, which is the GB bus
+            # However for generating assets that are represented as Links (e.g. OCGT)
+            # the relevant bus is bus1 (which is GB connected)
+            bus = g_up.bus1.where(g_up.bus1.str.match("GB\s+"), g_up.bus0)
+
+            # TODO check and continue here
 
         # Add generators that can increase dispatch
-        constrained_network.add(
+        base_network.add(
             "Generator",
             g_up.index,
             suffix=" ramp up",
             carrier=f"{comp.name} ramp up",
             p_min_pu=0,
             p_max_pu=up_limit.loc[:, g_up.index],
-            marginal_cost=prices["offer"],
+            marginal_cost=prices["offer"].loc[:, g_up.index],
             p_nom=g_up.p_nom,
-            bus=g_down.bus if comp.name not in ["Link", "Line"] else g_down.bus0,
+            bus=bus,
         )
 
         # Add generators that can decrease dispatch
-        constrained_network.add(
+        base_network.add(
             "Generator",
             g_down.index,
             suffix=" ramp down",
             carrier=f"{comp.name} ramp down",
             p_min_pu=down_limit.loc[:, g_down.index],
             p_max_pu=0,
-            marginal_cost=prices["bid"],
+            marginal_cost=prices["bid"].loc[:, g_down.index],
             p_nom=g_down.p_nom,
-            bus=g_down.bus if comp.name not in ["Link", "Line"] else g_down.bus0,
+            bus=bus,
         )
 
         logger.info(
@@ -349,7 +381,7 @@ if __name__ == "__main__":
 
     create_up_down_plants(
         network,
-        unconstrained_result,
+        dispatch_result,
         bids_and_offers,
         renewable_strike_prices,
         interconnector_bid_offer_profile,
