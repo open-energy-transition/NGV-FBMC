@@ -198,8 +198,10 @@ def filter_interconnectors(df: pd.DataFrame, query="carrier == 'DC'") -> pd.Data
     pd.DataFrame
         Filtered dataframe of interconnectors between GB and Europe
     """
-    m1 = df["bus0"].str.startswith("GB")
-    m2 = df["bus1"].str.startswith("GB")
+    # Filter for links that are connected to GB and not GB
+    # Important to treat "GBNI" as non-GB, despite the name starting with "GB"
+    m1 = df["bus0"].str.startswith("GB") & ~df["bus0"].eq("GBNI")
+    m2 = df["bus1"].str.startswith("GB") & ~df["bus1"].eq("GBNI")
 
     return df[(m1 & ~m2) | (~m1 & m2)].query(query)
 
