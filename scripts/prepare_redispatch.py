@@ -116,6 +116,7 @@ def create_up_down_plants(
     renewable_strike_prices: pd.Series,
     interconnector_bid_offer_profile: pd.DataFrame,
     gb_buses: pd.Index,
+    no_redispatch_carriers: list[str],
 ):
     """
     Add generators and storage units components that mimic increase / decrease in dispatch
@@ -134,6 +135,8 @@ def create_up_down_plants(
         Interconnectors bid/offer profile for each interconnector
     gb_buses: pd.Index
         Index of GB buses
+    no_redispatch_carriers: list[str]
+        List of carriers to exclude from being redispatched.
     """
     for comp in base_network.components[["Generator", "StorageUnit", "Link"]]:
         base_network.add("Carrier", [f"{comp.name} ramp up", f"{comp.name} ramp down"])
@@ -143,7 +146,11 @@ def create_up_down_plants(
         if comp.name in ["Generator", "StorageUnit"]:
             # Filter GB plants
             g = g.query(
-                "`bus` in @gb_buses and `p_nom` != 0", local_dict={"gb_buses": gb_buses}
+                "`bus` in @gb_buses and `p_nom` != 0 and `carrier` not in @no_redispatch_carriers",
+                local_dict={
+                    "gb_buses": gb_buses,
+                    "no_redispatch_carriers": no_redispatch_carriers,
+                },
             )
         elif comp.name == "Link":
             # Account for different port names and only
@@ -154,8 +161,11 @@ def create_up_down_plants(
                 local_dict={"gb_buses": gb_buses},
             ).index
             g = g.query(
-                "`index` not in @intra_gb_links and `p_nom` != 0",
-                local_dict={"intra_gb_links": intra_gb_links},
+                "`index` not in @intra_gb_links and `p_nom` != 0 and `carrier` not in @no_redispatch_carriers",
+                local_dict={
+                    "intra_gb_links": intra_gb_links,
+                    "no_redispatch_carriers": no_redispatch_carriers,
+                },
             )
 
         g_up = g.copy()
@@ -485,6 +495,7 @@ if __name__ == "__main__":
         renewable_strike_prices=renewable_strike_prices,
         interconnector_bid_offer_profile=interconnector_bid_offer_profile,
         gb_buses=gb_buses,
+        no_redispatch_carriers=snakemake.params["no_redispatch_carriers"],
     )
 
     network = drop_existing_eur_buses(network)
