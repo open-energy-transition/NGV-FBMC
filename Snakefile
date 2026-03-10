@@ -235,13 +235,21 @@ rule prepare_scenario_SQ:
 rule retrieve_data_FBMC:
     message:
         "Retrieving data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
+    input:
+        flow_based_constraints="data/NGV-FBMC/flow_based_constraints_{planning_horizons}.parquet"
     output:
-        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.parquet",
-        ram="data/NGV-FBMC/ram/{planning_horizons}.parquet",
+        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.nc",
+        ram="data/NGV-FBMC/ram/{planning_horizons}.nc",
     log:
         "logs/retrieve_data_FBMC/{planning_horizons}.log",
     run:
-        raise NotImplementedError("Logic not yet implemented.")
+        from scripts.fbmc import FBMCConstraint
+
+        (
+            FBMCConstraint
+            .from_parquet(input.flow_based_constraints)
+            .to_netcdf(output.ptdf, output.ram)
+        )
 
 
 rule prepare_scenario_FBMC:
@@ -249,8 +257,8 @@ rule prepare_scenario_FBMC:
         "Preparing model for flow-based scenario based on combined model for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.parquet",
-        ram="data/NGV-FBMC/ram/{planning_horizons}.parquet",
+        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.nc",
+        ram="data/NGV-FBMC/ram/{planning_horizons}.nc",
     output:
         model="resources/base/networks/FBMC/{planning_horizons}.nc",
     log:
@@ -298,9 +306,9 @@ rule solve_dispatch:
         # openTYNDP specific: Not used (because OH trajectories are off)
         # but keeping for consistency to be able to reuse code from the openTYNDP model
         renewable_carriers_tyndp=config["electricity"]["tyndp_renewable_carriers"],
+        scenario=lambda w: w.scenario,
     input:
         network="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
-        # TODO - add logic
         ptdf=branch(
             lambda wildcards: wildcards.scenario == "FBMC",
             rules.prepare_scenario_FBMC.input.ptdf,
