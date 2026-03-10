@@ -63,7 +63,7 @@ def fix_dispatch(
 
             p_fix = comp.dynamic.p0.loc[:, other_links]
 
-        base_network.components[comp.name].dynamic.p_set = p_fix
+        base_network.components[comp.name].dynamic.p_set.loc[:, p_fix.columns] = p_fix
 
         logger.info(f"Fixed the dispatch of {comp.name}")
 
@@ -226,6 +226,10 @@ def create_up_down_plants(
             # Emitting generators with bus0, bus1 and bus2 set: use bus1
             # Buses with bus0 matching "GB\s+": use bus0
             # otherwise use bus0
+            #
+            # Important: This attaches the up/down generators for interconnector redispatch to the GB side, not the RoE side.
+            # this is beneficial for us, as we can easily remove all other components from the RoE side.
+            # The redispatch generators are later moved to the right RoE bus.
             bus = g_up.bus1.where(g_up.bus2 != "", g_up.bus0)
 
         # Add generators that can increase dispatch
@@ -279,24 +283,37 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
         "co2 atmosphere",
     ]
     eur_buses = network.buses.query(
-        "country != 'GB' and `index` not in @protected_buses"
+        "country != 'GB' and `index` not in @protected_buses",
+        local_dict={"protected_buses": protected_buses},
     ).index
     gb_buses = network.buses.query("country == 'GB'").index
     network.remove("Bus", eur_buses)
 
     for comp in network.components[["Generator", "StorageUnit", "Store", "Load"]]:
+        idx = comp.static.query(
+            "bus in @eur_buses", local_dict={"eur_buses": eur_buses}
+        ).index
         network.remove(
             comp.name,
-            comp.static.query("bus in @eur_buses").index,
+            idx,
         )
 
     for comp in network.components[["Link", "Line"]]:
         # Drop all Links, except for those where bus0 or bus1 is a GB bus
         # e.g. interconnectors or generating assets represented as Links (e.g. OCGT)
+        idx = comp.static.query(
+            "bus0 not in @gb_buses and bus1 not in @gb_buses",
+            local_dict={"gb_buses": gb_buses},
+        ).index
         network.remove(
             comp.name,
-            comp.static.query("bus0 not in @gb_buses and bus1 not in @gb_buses").index,
+            idx,
         )
+
+    # Cleanup dynamic p_set for the removed components
+    for comp in network.components[["Generator", "StorageUnit", "Link"]]:
+        idx = comp.dynamic.p_set.columns.difference(comp.static.index)
+        comp.dynamic.p_set = comp.dynamic.p_set.drop(columns=idx)
 
     # Manual cleanup for some that are not easy to catch
     cleanup_components = {"Load": ["EU solid biomass final energy demand"]}
@@ -326,7 +343,7 @@ def add_eur_buses(network: pypsa.Network) -> pypsa.Network:
         End points will be added to this network.
     """
     interconnectors = filter_interconnectors(
-        network.c.links.static, "carrier in ['DC', 'ramp up', 'ramp down']"
+        network.c.links.static, "carrier in ['DC']"
     )
 
     buses = interconnectors[["bus1"]]
@@ -335,15 +352,67 @@ def add_eur_buses(network: pypsa.Network) -> pypsa.Network:
 
     network.add("Bus", buses.index, country=buses["country"])
 
+    # Add bus for all interconnectors, even those with zero capacity, to have a consistent structure of the network
     network.add(
-        "Store",
-        name=buses.index,
-        suffix=" store",
-        bus=buses.index,
-        e_nom=1e9,  # Large capacity to avoid energy constraints,
+        "Carrier",
+        name="interconnector dispatch",
+    )
+
+    # Only active interconnectors with non-zero capacity have up/down plants and dispatch
+    interconnectors = interconnectors.query("`p_nom` > 0")
+
+    # Add a generator with p_set that forces the dispatch of the link to be the same as in the optimal dispatch results
+    # The interconnectors are GB -> non-GB, i.e. by convention we need to reverse the forced dispatch (hence the -1)
+    network.add(
+        "Generator",
+        name=interconnectors.index,
+        suffix=" dispatch",
+        bus=interconnectors["bus1"],
+        carrier="interconnector dispatch",
+        p_set=-1
+        * network.get_switchable_as_dense("Link", "p_set").loc[
+            :, interconnectors.index
+        ],
+        p_nom=1e9,  # Large capacity to avoid power constraints,
+        p_nom_extendable=False,
+        marginal_cost=0,
+    )
+
+    # Remove the original dispatch constraints on the interconnectors, as they are now represented by the generators on the non-GB side
+    network.c.links.dynamic.p_set = network.c.links.dynamic.p_set.drop(
+        columns=interconnectors.index
     )
 
     logger.info(f"Added {len(buses)} buses for the endpoints of all interconnectors")
+
+    # Move interconnector ramp up/down generators from GB buses to their respective EUR buses.
+    # The up/down plants for interconnectors are initially attached to GB buses for easier
+    # processing. This function moves them to the correct EUR endpoint buses.
+    for interconnector_name, interconnector in interconnectors.iterrows():
+        # Find corresponding ramp up/down generators for this interconnector
+        ramp_gens = network.c.generators.static.query(
+            "`index` in @gen_names",
+            local_dict={
+                "gen_names": [
+                    f"{interconnector_name} ramp up",
+                    f"{interconnector_name} ramp down",
+                ]
+            },
+        )
+
+        if len(ramp_gens) == 0:
+            logger.warning(
+                f"Interconnector {interconnector_name} has non-zero capacity but no ramp up/down generators attached. "
+                f"This is likely an error in the input data, please check."
+            )
+            continue
+
+        # Move the ramp up/down generators to the right non-GB bus (bus1 of the interconnector)
+        network.generators.loc[ramp_gens.index, "bus"] = interconnector["bus1"]
+
+        logger.info(
+            f"Moved {len(ramp_gens)} interconnector ramp up/down generators from {ramp_gens['bus'].unique().item()} to {interconnector['bus1']} for interconnector {interconnector_name}"
+        )
 
     return network
 
@@ -426,5 +495,9 @@ if __name__ == "__main__":
         # Set line capacities to infinity, so only boundary capabilities bound the optimization instead of line capacities.
         copperplate_gb(network)
 
+    # Never hurts
+    network.consistency_check(strict=None)
+
     network.name = f"{snakemake.wildcards.scenario} ({snakemake.wildcards.planning_horizons}) - redispatch"
-    logger.info(f"Exported network to {snakemake.output.network}")
+
+    network.export_to_netcdf(snakemake.output.network)
