@@ -150,7 +150,7 @@ def merge_gb_tyndp(
         gb.c["Link"].static.loc[link.index, "bus1"] = "GBNI"
 
     # Map carriers from GB model to carrier names in the openTYNDP model
-    # leave generators for now, they are reassigned in the add_co2_multilink function
+    # leave generators for now, they are reassigned in the convert_generators_to_links function
     for comp in gb.components[["Link", "Store", "StorageUnit", "Load"]]:
         comp.static["carrier"] = comp.static["carrier"].replace(carrier_map[comp.name])
 
@@ -268,11 +268,16 @@ def convert_generators_to_links(
     # aligned with their carrier names, but the components will not be converted to Links
     for gb_carrier, eur_carrier in carrier_map["Generator"].items():
         # check that the generator type isn't intended to stay as a generator (e.g. solar and other renewables)
-        if not (
+        # for those the generator carrier is only changed, all others are convert to links
+        if (
             ("solar" in eur_carrier)
             or ("wind" in eur_carrier)
             or ("geothermal" in eur_carrier)
         ):
+            n_merged.c["Generator"].static.loc[
+                n_merged.c["Generator"].static.carrier == gb_carrier, "carrier"
+            ] = eur_carrier
+        else:
             gens = n_merged.generators[
                 (n_merged.generators.carrier == gb_carrier)
                 & (n_merged.generators.bus.str.startswith("GB "))
