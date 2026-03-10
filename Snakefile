@@ -334,7 +334,6 @@ rule solve_dispatch:
             rules.prepare_scenario_FBMC.input.ram,
         ),
         # TYNDP specific
-        # TODO make sure logic is in solve_network
         offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
         network="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
@@ -344,7 +343,7 @@ rule solve_dispatch:
         memory="logs/solve_dispatch/{scenario}/{planning_horizons}_memory.log",
         python="logs/solve_dispatch/{scenario}/{planning_horizons}_python.log",
     benchmark:
-        "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{planning_horizons}"
+        "results/dispatch/benchmarks/solve_network/{scenario}/{planning_horizons}"
     threads: config["solving"]["solver_options"]["threads"]
     resources:
         mem_mb=config["solving"]["mem_mb"],
