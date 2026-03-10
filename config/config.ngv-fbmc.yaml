@@ -55,7 +55,7 @@ carrier_mapping:
     solar: solar-pv-utility
     waste: waste
     CCGT: gas-ccgt
-    OCGT: OCGT
+    OCGT: gas-ocgt
   Link:
     Baseline Electricity (I&C) DSR reverse: battery discharger
     Baseline Electricity (I&C) DSR shift: battery charger

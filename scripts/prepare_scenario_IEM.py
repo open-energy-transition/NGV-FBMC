@@ -312,7 +312,7 @@ def convert_generators_to_links(
                         0
                     ],  # co2 atmosphere for emitting generators or nothing
                     carrier=eur_carrier,
-                    p_nom=gens.p_nom,
+                    p_nom=gens.p_nom / ref.efficiency.mean(),
                     p_nom_extendable=gens.p_nom_extendable,
                     efficiency=ref.efficiency.mean(),
                     efficiency2=ref.efficiency2.mean(),
@@ -600,8 +600,26 @@ if __name__ == "__main__":
     if snakemake.params.time_aggregation["enable"]:
         n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
 
+    # Make it easier for downstream rules to identify GB buses and components by assigning a country attribute
+    n_merged.buses.loc[n_merged.buses.index.str.match(r"GB\s+"), "country"] = "GB"
+    n_merged.generators.loc[
+        n_merged.generators.index.str.match(r"GB\s+"), "country"
+    ] = "GB"
+    n_merged.links.loc[n_merged.links.index.str.match(r"GB\s+"), "country"] = "GB"
+    # also remove the sometimes wrongly assigned "GB" country from GBNI-components
+    n_merged.buses.loc[n_merged.buses.index.str.match("GBNI"), "country"] = "GBNI"
+    n_merged.generators.loc[n_merged.generators.index.str.match("GBNI"), "country"] = (
+        "GBNI"
+    )
+    n_merged.links.loc[n_merged.links.index.str.match("GBNI"), "country"] = "GBNI"
+
     # Never hurts
     n_merged.consistency_check(strict=None)
+
+    # Give the new network a proper name
+    n_merged.name = (
+        f"Integrated Energy Market (IEM) - {snakemake.wildcards.planning_horizons}"
+    )
 
     # Export to file
     n_merged.export_to_netcdf(snakemake.output["model"])
