@@ -51,6 +51,7 @@ carrier_mapping:
     geothermal: geothermal
     nuclear: nuclear
     offwind-dc: offwind-dc-fl-oh
+    onwind: onwind
     oil: oil-heavy
     solar: solar-pv-utility
     waste: waste
@@ -91,6 +92,18 @@ carrier_mapping:
     I&C Heat DSR: battery
     Residential Heat DSR: battery
     EV V2G: home battery
+  strike_price_mapping:
+    biomass: [solid biomass]
+    offwind-dc: [offwind-ac-fb-r, offwind-ac-fl-r, offwind-dc]
+    onwind: [onwind]
+    solar: [solar-pv-utility, solar-pv-rooftop, solar]
+    waste: [waste]
+    CCGT: [gas-ccgt]
+    OCGT: [gas-ocgt, OCGT]
+    battery storage: [battery charger, battery discharger, home battery charger, home battery discharger]
+    engine: [oil-light]
+    oil: [oil-heavy]
+
 
 time_aggregation:
   enable: true
