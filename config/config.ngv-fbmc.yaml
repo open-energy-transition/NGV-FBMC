@@ -91,7 +91,7 @@ carrier_mapping:
     Baseline Electricity unmanaged load: electricity distribution grid
     EV DSR reverse: home battery discharger
     EV DSR shift: home battery charger
-    EV unmanaged load: home battery charger
+    EV unmanaged load: electricity distribution grid
     H2 Turbine: h2-ccgt
     I&C Heat DSR reverse: battery discharger
     I&C Heat DSR shift: battery charger
