@@ -347,7 +347,6 @@ rule solve_dispatch:
         "scripts/solve_network.py"
 
 
-# WIP
 rule calc_interconnector_bid_offer_profile:
     message:
         "Calculate interconnector bid/offer profiles"
@@ -359,7 +358,7 @@ rule calc_interconnector_bid_offer_profile:
     log:
         "logs/calc_interconnector_bid_offer_profile/{scenario}/{planning_horizons}.log",
     script:
-        "scripts/calc_interconnector_bid_offer_profile.py"
+        "scripts/gb_model/redispatch/calc_interconnector_bid_offer_profile.py"
 
 
 # TODO
@@ -382,7 +381,7 @@ rule prepare_redispatch:
             "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
         ),
     output:
-        redispatch_model="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
+        network="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
     log:
         "logs/prepare_redispatch/{scenario}/{planning_horizons}.log",
     script:
@@ -393,9 +392,9 @@ rule solve_redispatch:
     message:
         "Running the redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
     input:
-        redispatch_model=rules.prepare_redispatch.output.redispatch_model,
+        network=rules.prepare_redispatch.output.network,
     output:
-        redispatch_results="results/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
+        network="results/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
     log:
         "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
