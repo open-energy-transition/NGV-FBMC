@@ -142,6 +142,15 @@ rule run_gbdispatchmodel_as_rule:
         bid_offer_multipliers=gbdispatchmodel(
             "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
         ),
+        current_etys_caps=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/etys_boundary_capabilities.csv"
+        ),
+        future_etys_caps=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/HT/future_etys_boundary_capabilities.csv"
+        ),
+        boundary_crossings=gbdispatchmodel(
+            "resources/GB-ETYS-subset/etys_boundary_crossings.csv"
+        ),
     shell:
         """
         pixi run \
@@ -361,7 +370,6 @@ rule calc_interconnector_bid_offer_profile:
         "scripts/gb_model/redispatch/calc_interconnector_bid_offer_profile.py"
 
 
-# TODO
 rule prepare_redispatch:
     message:
         "Preparing redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
@@ -391,11 +399,55 @@ rule prepare_redispatch:
 rule solve_redispatch:
     message:
         "Running the redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
+    params:
+        solving=config["solving"],
+        foresight=config["foresight"],
+        co2_sequestration_potential=config["sector"]["co2_sequestration_potential"],
+        renewable_carriers=config["electricity"]["renewable_carriers"],
+        # GB dispatch model specific
+        custom_extra_functionality="scripts/gb_model/redispatch/custom_constraints.py",
+        manual_future_etys_caps=branch(
+            config["etys"]["use_future_capacities"],
+            config["etys"]["manual_future_capacities"],
+            {},
+        ),
+        # openTYNDP specific: Not used (because OH trajectories are off)
+        # but keeping for consistency to be able to reuse code from the openTYNDP model
+        renewable_carriers_tyndp=config["electricity"]["tyndp_renewable_carriers"],
     input:
         network=rules.prepare_redispatch.output.network,
+        current_etys_caps=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/etys_boundary_capabilities.csv"
+        ),
+        future_etys_caps=branch(
+            config["etys"]["use_future_capacities"],
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/gb-model/HT/future_etys_boundary_capabilities.csv"
+            ),
+            [],
+        ),
+        boundary_crossings=gbdispatchmodel(
+            "resources/GB-ETYS-subset/etys_boundary_crossings.csv"
+        ),
+        # TYNDP specific
+        offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
-        network="results/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
+        network="results/redispatch/networks/{scenario}/{planning_horizons}.nc",
+        config="results/redispatch/configs/{scenario}/{planning_horizons}.yaml",
+    log:
+        solver="logs/solve_redispatch/{scenario}/{planning_horizons}_solver.log",
+        memory="logs/solve_redispatch/{scenario}/{planning_horizons}_memory.log",
+        python="logs/solve_redispatch/{scenario}/{planning_horizons}_python.log",
+    benchmark:
+        "results/redispatch/benchmarks/solve_network/{scenario}/{planning_horizons}"
+    threads: config["solving"]["solver_options"]["threads"]
+    resources:
+        mem_mb=config["solving"]["mem_mb"],
+        runtime=config["solving"]["runtime"],
+        parallel_solving=1,
+    shadow:
+        config["run"]["use_shadow_directory"]
     log:
         "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
-        "scripts/solve_redispatch.py"
+        "scripts/solve_network.py"
