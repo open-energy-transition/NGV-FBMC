@@ -42,7 +42,7 @@ def set_boundary_constraints(
     # If future ETYS caps are provided, use them instead of initial levels,
     # gap filling with initial levels where future caps are missing.
     if snakemake.input.future_etys_caps:
-        year = int(snakemake.wildcards.year)
+        year = int(snakemake.wildcards.planning_horizons)
         future_caps = pd.read_csv(
             snakemake.input.future_etys_caps, index_col=["boundary_name", "year"]
         ).capability_mw.xs(year, level="year")
