@@ -312,7 +312,7 @@ def convert_generators_to_links(
                         0
                     ],  # co2 atmosphere for emitting generators or nothing
                     carrier=eur_carrier,
-                    p_nom=gens.p_nom,
+                    p_nom=gens.p_nom / ref.efficiency.mean(),
                     p_nom_extendable=gens.p_nom_extendable,
                     efficiency=ref.efficiency.mean(),
                     efficiency2=ref.efficiency2.mean(),
