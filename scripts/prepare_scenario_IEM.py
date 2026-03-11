@@ -618,6 +618,23 @@ if __name__ == "__main__":
     )
     n_merged.links.loc[n_merged.links.index.str.match("GBNI"), "country"] = "GBNI"
 
+    # Patch: Remove this line from the network
+    # It is an offshore line connecting an offshore wind hub with onshore,
+    # but is wrongly picked up by the processing. Until this is fixed upstream, remove the line manually
+    idx = n_merged.lines.query(
+        "`bus0` in ['GB EC5', 'GB SC3-SC2'] and `carrier` in ['AC', 'DC']"
+    ).index
+    if not idx.empty:
+        logger.info(
+            f"Path: Removing line {idx[0]} between GB EC5 and GB SC3-SC2 which is erroneously picked up in the model."
+        )
+        n_merged.remove("Line", idx)
+    else:
+        logger.error(
+            f"Path: Expected to find one line connecting GB EC5 and GB SC3-SC2 with carrier AC or DC to remove, but found {len(idx)}. "
+            f"Check for line existence/missing!"
+        )
+
     # Never hurts
     n_merged.consistency_check(strict=None)
 
