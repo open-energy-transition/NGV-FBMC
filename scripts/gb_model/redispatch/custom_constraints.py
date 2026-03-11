@@ -113,20 +113,6 @@ def set_boundary_constraints(
     )
 
 
-def update_storage_p_bounds(n: pypsa.Network) -> None:
-    """
-    Update the bounds of storage unit dispatch and store power to make up for insufficient default bounding.
-
-    Args:
-        n (pypsa.Network): The PyPSA network to update.
-    """
-    # `p_dispatch`/`p_store` have correct upper bounds but no lower, so we copy one from the other to _fix_ the storage unit flows.
-    for direction in ["dispatch", "store"]:
-        n.model.constraints[
-            f"StorageUnit-fix-p_{direction}-lower"
-        ].rhs = n.model.constraints[f"StorageUnit-fix-p_{direction}-upper"].rhs
-
-
 def update_storage_balance(n: pypsa.Network) -> None:
     """
     Update the energy balance mathematics to include up and down ramping
@@ -168,5 +154,4 @@ def custom_constraints(
     # Apply boundary constraints
     set_boundary_constraints(n, snapshots, snakemake)
     remove_KVL_constraints(n, snapshots, snakemake)
-    update_storage_p_bounds(n)
     update_storage_balance(n)
