@@ -2,9 +2,11 @@ import pypsa
 import pandas as pd
 
 from typing import Literal
-from helpers.results_computer_base import ResultsComputerBase
-from helpers.results_computer_wrappers import metric
-from helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
+
+from modules.analysis_toolkit.helpers.results_computer_base import ResultsComputerBase
+from modules.analysis_toolkit.helpers.results_computer_wrappers import metric
+from modules.analysis_toolkit.helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
+from modules.analysis_toolkit.helpers.config.filepaths import get_etys_boundaries_geopandas_fp
 
 
 class ResultsComputer(ResultsComputerBase):
@@ -81,6 +83,7 @@ class ResultsComputer(ResultsComputerBase):
         """Flows on the boundary lines, which is an approximation to the actual line loading."""
         link_flows = self._get_gb_interconnector_flows(n=n)
         ptdf = get_fb_constraints(year=self.year).set_index(["snapshot", "boundary", "direction"])
+        # TODO: MAKE SURE THAT THE PTDF AND NETWORK.SNAPSHOTS ARE ALIGNED ON THE SAME TIMESTAMPS AND YEAR.
         ptdf.columns.name = "name"
         # contribution from link flows to the boundary loading, based on the ptdf values
         boundary_flows = link_flows.T.mul(ptdf)
@@ -110,8 +113,8 @@ class ResultsComputer(ResultsComputerBase):
         boundaries = Boundaries(network=n, year=self.year)
         boundary_flows_dict = {}
         for boundary_name, boundary in boundaries.items():
-            boundary_flows_dict[(boundary_name, "DIRECT")] = n.lines_t.p0.loc[:, boundary.lines].sum(axis=1)
-            boundary_flows_dict[(boundary_name, "OPPOSITE")] = - n.lines_t.p0.loc[:, boundary.lines].sum(axis=1)
+            boundary_flows_dict[(boundary_name, "DIRECT")] = n.lines_t.p0.loc[:, boundary.lines].sum(axis=1) + n.links_t.p0.loc[:, boundary.links].sum(axis=1)
+            boundary_flows_dict[(boundary_name, "OPPOSITE")] = - n.lines_t.p0.loc[:, boundary.lines].sum(axis=1) - n.links_t.p0.loc[:, boundary.links].sum(axis=1)
         boundary_flows = pd.DataFrame(boundary_flows_dict, index=n.snapshots).T.stack()
         boundary_flows = boundary_flows.rename_axis(index=["boundary", "direction", "snapshot"])
         boundary_flows = boundary_flows.reorder_levels(["snapshot", "boundary", "direction"])
@@ -157,6 +160,9 @@ class ResultsComputer(ResultsComputerBase):
 
 
 if __name__ == "__main__":
-    rc = ResultsComputer(year=2030)
-    rc.boundary_congestion_count_ptdf.iem_dispatch(which='actual')
+    year=2030
+    rc = ResultsComputer(year=year)
+    # test metric
+    rc.boundary_flows.iem_dispatch(which='actual')
+
     print()
