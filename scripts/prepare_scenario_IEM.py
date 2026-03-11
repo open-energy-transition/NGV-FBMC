@@ -603,6 +603,30 @@ def reorder_line_directions(
     return n
 
 
+def remove_erroneous_line(n: pypsa.Network) -> pypsa.Network:
+    """
+    Patches the network by removing an erroneously picked up line between GB EC5 and GB SC3-SC2.
+
+    This is an offshore line connecting an offshore wind hub with onshore, but is wrongly picked up by the processing.
+    Until this is fixed upstream, we remove the line manually to avoid issues with the model results and downstream processing.
+    """
+    idx = n.lines.query(
+        "`bus0` in ['GB EC5', 'GB SC3-SC2'] and `carrier` in ['AC', 'DC']"
+    ).index
+    if not idx.empty:
+        logger.info(
+            f"Path: Removing line {idx[0]} between GB EC5 and GB SC3-SC2 which is erroneously picked up in the model."
+        )
+        n.remove("Line", idx)
+    else:
+        logger.error(
+            f"Path: Expected to find one line connecting GB EC5 and GB SC3-SC2 with carrier AC or DC to remove, but found {len(idx)}. "
+            f"Check for line existence/missing!"
+        )
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -677,6 +701,9 @@ if __name__ == "__main__":
         manual_boundaries_fp=snakemake.input.external_boundary_definitions,
     )
 
+    # Patch network: Remove erroneously picked up line between GB EC5 and GB SC3-SC2
+    n_merged = remove_erroneous_line(n_merged)
+
     # Cluster the network by time
     # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
     # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
@@ -698,23 +725,6 @@ if __name__ == "__main__":
         "GBNI"
     )
     n_merged.links.loc[n_merged.links.index.str.match("GBNI"), "country"] = "GBNI"
-
-    # Patch: Remove this line from the network
-    # It is an offshore line connecting an offshore wind hub with onshore,
-    # but is wrongly picked up by the processing. Until this is fixed upstream, remove the line manually
-    idx = n_merged.lines.query(
-        "`bus0` in ['GB EC5', 'GB SC3-SC2'] and `carrier` in ['AC', 'DC']"
-    ).index
-    if not idx.empty:
-        logger.info(
-            f"Path: Removing line {idx[0]} between GB EC5 and GB SC3-SC2 which is erroneously picked up in the model."
-        )
-        n_merged.remove("Line", idx)
-    else:
-        logger.error(
-            f"Path: Expected to find one line connecting GB EC5 and GB SC3-SC2 with carrier AC or DC to remove, but found {len(idx)}. "
-            f"Check for line existence/missing!"
-        )
 
     # Never hurts
     n_merged.consistency_check(strict=None)
