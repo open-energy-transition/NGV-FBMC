@@ -92,42 +92,78 @@ class ResultsComputer(ResultsComputerBase):
 
         return redispatch_costs
 
-    @metric
+    @metric(restricted_to= "dispatch")
     def consumer_costs(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
         """
-        The method returns a disaggregated data frame with the time series of the consumer cost per component.
-        The storage units, the links and the lines are excluded from the calculation.
+        The method returns a disaggregated data frame with the time series of the consumer cost per component (for GB only).
+        The storage units, the  DC links and the lines are excluded from the calculation.
         The demand consists of both unmanaged and DSR components.
         """
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC"], groupby_time = False, groupby= ["name", "carrier", "bus", "country"]).xs("GB", level = 4)
-        excluded_carriers = ["DC"]
-        links_to_exclude = n.links[n.links.carrier.isin(excluded_carriers)].index
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier", "bus", "country"]).xs("GB", level = "country")
 
-        component_cashflows = n.statistics.revenue(bus_carrier=["AC"], groupby = ["name", "carrier", "bus", "country"], groupby_time = False).xs("GB", level = 4)
+        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "bus", "country"], groupby_time = False).xs("GB", level = "country")
         cashflow_of_consumption = component_cashflows[energy_balance.sum(axis=1) < 0]
-        consumer_cost = cashflow_of_consumption.drop(links_to_exclude, level=1).drop("StorageUnit", level="component").drop("Line", level = "component")
+        consumer_cost = cashflow_of_consumption.drop("DC", level="carrier").drop(["StorageUnit", "Line"], level="component")
         return consumer_cost
 
-    @metric
+    @metric(restricted_to= "dispatch")
     def producer_costs(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
         """
-        The method returns a disaggregated data frame with the time series of the producer cost per component.
-        The storage unit and the links are excluded from the calculation. Lines are not included in the opex data frame, so no need to exclude them.
-        Note that in the GB dispatch model, all producers are modeled as generators (and not links), which makes the calculations easier.
-        Also, the fuel and co2 costs are included in the marginal cost of the generators.
+        The method returns a disaggregated data frame with the time series of the producer cost per component (for GB only).
+        Producer cost = fuel cost + co2 cost + opex (vom). The first two are extracted with the revenue command.
         """
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC"], groupby_time = False, groupby= ["name", "carrier", "bus", "country"]).xs("GB", level = 4)
-        excluded_carriers = ["DC"]
-        links_to_exclude = n.links[n.links.carrier.isin(excluded_carriers)].index
+        # Filter all components that inject or absorb power to/from the AC grid of GB.
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier", "country"]).xs("GB", level = "country")
 
-        component_opex = n.statistics.opex(bus_carrier=["AC"], groupby = ["name", "carrier", "bus", "country"], groupby_time = False).xs("GB", level = 4)
+        # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
+        component_opex = n.statistics.opex(groupby=["name", "carrier"],
+                                           groupby_time=False)
 
-        # --- Align both dataframes to have the exact same index --- (to avoid a warning of missing indexes)
-        energy_balance, component_opex = energy_balance.align(component_opex, join='inner')
+        # Includes fuel and co2 costs, excludes electricity revenues.
+        component_production_costs = n.statistics.revenue(groupby=["name", "carrier", "bus_carrier"],
+                                                     groupby_time=False, at_port = True).drop("AC", level = "bus_carrier").droplevel("bus_carrier").groupby(["component","name", "carrier"]).sum()
 
-        cashflow_of_production = component_opex[energy_balance.sum(axis=1) > 0]
-        producer_cost = cashflow_of_production.drop(links_to_exclude, level=1).drop("StorageUnit", level="component")
-        return producer_cost
+        # DC links and storage components should be excluded.
+        excluded_carriers = ["home battery discharger", "DC"]
+
+        # --- Align both dataframes to have the exact same index ---
+        energy_balance_aligned_opex, component_opex = energy_balance.align(component_opex, join='inner')
+        energy_balance_aligned_revenues, component_production_costs = energy_balance.align(component_production_costs, join='inner')
+
+        opex_of_production = component_opex[energy_balance_aligned_opex.sum(axis=1) > 0].drop(excluded_carriers, level="carrier").drop("StorageUnit", level="component")
+        costs_of_production = component_production_costs[energy_balance_aligned_revenues.sum(axis=1) > 0].drop("home battery discharger", level="carrier")
+
+        producer_costs = opex_of_production.add(costs_of_production, fill_value=0)
+        return producer_costs
+
+    @metric(restricted_to= "dispatch")
+    def producer_surplus(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
+        """
+        The method returns a disaggregated data frame with the time series of the producer cost per component (for GB only).
+        Producer surplus = electricity revenue -  fuel cost - co2 cost - opex (vom). The net sum of the first 3 are extracted with the revenue command.
+        """
+        # Filter all components that inject or absorb power to/from the AC grid of GB.
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier", "country"]).xs("GB", level = "country")
+
+        # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
+        component_opex = n.statistics.opex(groupby=["name", "carrier"],
+                                           groupby_time=False)
+
+        component_revenue = n.statistics.revenue(groupby=["name", "carrier"],
+                                           groupby_time=False)
+
+        # DC links and storage components should be excluded.
+        excluded_carriers = ["home battery discharger", "DC"]
+
+        # --- Align both dataframes to have the exact same index ---
+        energy_balance_aligned_opex, component_opex = energy_balance.align(component_opex, join='inner')
+        energy_balance_aligned_revenues, component_revenue = energy_balance.align(component_revenue, join='inner')
+
+        opex_of_production = component_opex[energy_balance_aligned_opex.sum(axis=1) > 0].drop(excluded_carriers, level="carrier").drop("StorageUnit", level="component")
+        cashflow_of_production = component_revenue[energy_balance_aligned_revenues.sum(axis=1) > 0].drop(excluded_carriers, level="carrier").drop("StorageUnit", level="component")
+
+        producer_surplus = cashflow_of_production.sub(opex_of_production, fill_value=0)
+        return producer_surplus
 
 
 if __name__ == "__main__":
