@@ -12,6 +12,7 @@ This file is based on the gb-dispatch-model's `scripts/gb_model/redispatch/prepa
 import logging
 from pathlib import Path
 from typing import Literal
+import numpy as np
 
 import pandas as pd
 import pypsa
@@ -379,11 +380,13 @@ def add_eur_buses(network: pypsa.Network) -> pypsa.Network:
         suffix=" dispatch",
         bus=interconnectors["bus1"],
         carrier="interconnector dispatch",
+        p_min_pu=-1,
+        p_max_pu=1,
         p_set=-1
         * network.get_switchable_as_dense("Link", "p_set").loc[
             :, interconnectors.index
         ],
-        p_nom=1e9,  # Large capacity to avoid power constraints,
+        p_nom=np.inf,
         p_nom_extendable=False,
         marginal_cost=0,
     )
