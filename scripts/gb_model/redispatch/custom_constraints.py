@@ -47,7 +47,7 @@ def set_boundary_constraints(
             snakemake.input.future_etys_caps, index_col=["boundary_name", "year"]
         ).capability_mw.xs(year, level="year")
         manual_caps = pd.DataFrame(snakemake.params.manual_future_etys_caps).loc[year]
-        etys_capacities_all_boundaries = pd.concat([future_caps, manual_caps]).reindex(
+        etys_capacities_all_boundaries = manual_caps.combine_first(future_caps).reindex(
             etys_capacities.index
         )
         if (isna := etys_capacities_all_boundaries.isna()).any():
