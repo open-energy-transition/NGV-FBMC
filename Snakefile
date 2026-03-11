@@ -215,6 +215,7 @@ rule prepare_scenario_IEM:
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
         ),
+        external_boundary_definitions="config/boundary_definitions.yaml",
     output:
         model="resources/base/networks/IEM/{planning_horizons}.nc",
     log:
