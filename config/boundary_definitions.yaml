@@ -46,8 +46,6 @@ etys_boundaries_lines:
   EC5:
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: EC5
-  - bus0: SC3-SC2      # CORRECTION 2026-03-09
-    bus1: EC5          # CORRECTION 2026-03-09
   LE1:
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: LE1-B14-SC3-SC1.5
@@ -57,8 +55,6 @@ etys_boundaries_lines:
     bus1: B14                          # SWAPPED
   - bus0: SC1.5-B13-LE1     # ADDED
     bus1: LE1-B14-SC3-SC1.5       # ADDED
-  - bus0: EC5              # CORRECTION 2026-03-09
-    bus1: SC3-SC2          # CORRECTION 2026-03-09
   B13:
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: SC1-B13
@@ -75,8 +71,6 @@ etys_boundaries_lines:
     bus1: LE1-SC2-SC3           # ADDED
   - bus0: LE1-B14-SC3-SC1.5         # ADDED
     bus1: SC1.5-B13-LE1             # ADDED
-  - bus0: EC5              # CORRECTION 2026-03-09
-    bus1: SC3-SC2          # CORRECTION 2026-03-09
 
   SW1:   # OK
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
@@ -90,16 +84,12 @@ etys_boundaries_lines:
     bus1: LE1-SC2-SC3       # SWAPPED
   - bus0: SC2-SC3
     bus1: SC3-SC2
-  - bus0: EC5              # CORRECTION 2026-03-09
-    bus1: SC3-SC2          # CORRECTION 2026-03-09
 
   SC3:   # OK
   - bus0: LE1-B14-SC3-SC1.5
     bus1: SC2-SC3
   - bus0: LE1-SC2-SC3
     bus1: SC3-SC2
-  - bus0: EC5              # CORRECTION 2026-03-09
-    bus1: SC3-SC2          # CORRECTION 2026-03-09
 
   SC1:
   - bus0: SC1-B13     # SWAPPED
@@ -112,8 +102,6 @@ etys_boundaries_lines:
     bus1: LE1-SC2-SC3
   - bus0: LE1-B14-SC3-SC1.5     # ADDED.
     bus1: SC1.5-B13-LE1     # ADDED
-  - bus0: EC5              # CORRECTION 2026-03-09
-    bus1: SC3-SC2          # CORRECTION 2026-03-09
 
   NW2:
   - bus0: NW2-NW1
