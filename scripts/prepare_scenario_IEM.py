@@ -6,6 +6,8 @@
 import logging
 import re
 import pypsa
+import pandas as pd
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -528,6 +530,79 @@ def remove_unused_carriers(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def reorder_line_directions(
+    n: pypsa.Network, manual_boundaries_fp: str
+) -> pypsa.Network:
+    """
+    Reorders the line directions in the network to ensure that they are consistent with the specified boundaries.
+
+    The clustering algorithm does not deterministically assign the same line directions (bus0, bus1) in each run.
+    In order to align with externally calculated PTDF data, we correct the line directions at this point
+    to ensure they are consistent with the specified boundaries and therefore also between runs.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the line directions should be reordered.
+    manual_boundaries_fp : str
+        The file path to the manual boundary definitions.
+
+
+    Returns
+    -------
+    pypsa.Network
+        The network with reordered line directions.
+    """
+    # Load external boundary crossings file
+    with open(manual_boundaries_fp) as f:
+        boundaries_yaml = yaml.safe_load(f)
+
+    # Flatten the yaml for reading as pd.DataFrame
+    boundaries_flat = {}
+    idx = 0
+    for k, v in boundaries_yaml.items():
+        c = "Line" if "line" in k else "Link"
+
+        for boundary, entries in v.items():
+            for entry in entries:
+                boundaries_flat[idx] = {
+                    "component": c,
+                    "Boundary_n": boundary,
+                    "bus0": f"GB {entry['bus0']}",
+                    "bus1": f"GB {entry['bus1']}",
+                }
+                idx += 1
+
+    boundaries = pd.DataFrame.from_dict(boundaries_flat, orient="index")
+
+    logger.info("Reordering line directions")
+    for comp_name, boundary, bus0, bus1 in boundaries.itertuples(index=False):
+        correct = n.c[comp_name].static.query(
+            "`bus0` == @bus0 and `bus1` == @bus1",
+            local_dict={"bus0": bus0, "bus1": bus1},
+        )
+        switched = n.c[comp_name].static.query(
+            "`bus0` == @bus0 and `bus1` == @bus1",
+            local_dict={"bus0": bus1, "bus1": bus0},
+        )
+
+        if correct.empty and switched.empty:
+            logger.error(
+                f"Expected {comp_name} between {bus0} and {bus1} but None found in the network. "
+                f"Check whether the {comp_name} is missing or whether the manual boundary definition is incorrect."
+            )
+        elif not switched.empty:
+            logger.info(
+                f"Switching direction of flow for {comp_name} between {bus0} and {bus1}"
+            )
+            n.c[comp_name].static.loc[switched.index, ["bus0", "bus1"]] = (bus0, bus1)
+        else:
+            # Correctly oriented, nothing to do
+            pass
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -595,6 +670,12 @@ if __name__ == "__main__":
     # Due to https://github.com/PyPSA/PyPSA/issues/1606 we do this on the individual networks before the merge
     # and on the merged network again
     n_merged = reset_network(n_merged)
+
+    # Reorder line directions
+    n_merged = reorder_line_directions(
+        n=n_merged,
+        manual_boundaries_fp=snakemake.input.external_boundary_definitions,
+    )
 
     # Cluster the network by time
     # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
