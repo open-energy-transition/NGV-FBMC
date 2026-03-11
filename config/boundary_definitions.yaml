@@ -33,8 +33,10 @@ etys_boundaries_lines:
       #- bus0: B2-B1a  #   ADDED
       #  bus1: B8-NW3-B7a #   ADDED
   B8:
-  - bus0: B8-NW3-B7a
-    bus1: B9-B8-NW3
+  - bus0: B9-B8-NW3
+    bus1: B8-NW3-B7a
+  - bus0: B9-B8-NW3
+    bus1: SW1-B9
   B9:
   - bus0: B9-B8-NW3
     bus1: B9-SW1-EC5-B13-LE1-SC1.5
@@ -109,14 +111,14 @@ etys_boundaries_lines:
   - bus0: NW2-NW1     # SWAPPED
     bus1: B8-NW3-B7a        # SWAPPED
   NW3:
-  - bus0: B8-NW3-B7a
-    bus1: NW3-NW2
+  - bus0: NW3-NW2
+    bus1: B8-NW3-B7a
       # Bryn: Better convergence without this entry (it leapfrogs the boundary)
       # Pierre: I added back this entry, to ensure that a flow injection at bus NW1
       #         that is entirely absorbed by the slack bus is entirely intercepted by this boundary
       #.        ( PTDF[boundary NW3, bus NW1] = -1)
-  - bus0: B8-NW3-B7a
-    bus1: NW2-NW1
+  - bus0: NW2-NW1
+    bus1: B8-NW3-B7a
   B14:   # OK
   - bus0: B14
     bus1: B9-SW1-EC5-B13-LE1-SC1.5
@@ -147,3 +149,5 @@ etys_boundaries_links:
   B0:
   - bus0: B0
     bus1: B1a-B0
+
+
