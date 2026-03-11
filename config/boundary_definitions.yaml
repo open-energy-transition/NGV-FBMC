@@ -3,6 +3,9 @@
 # to align the automatically determined boundaries with the
 # boundary assumptions made for the PTDF calculation
 etys_boundaries_lines:
+  B0:
+  - bus0: B0
+    bus1: B1a-B0
   B3b:
   - bus0: B3b
     bus1: B4-B2-B3b
@@ -146,8 +149,5 @@ etys_boundaries_links:
   B7a:
   - bus0: B6-B5
     bus1: B8-NW3-B7a
-  B0:
-  - bus0: B0
-    bus1: B1a-B0
 
 
