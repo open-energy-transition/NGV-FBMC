@@ -123,11 +123,13 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
         if not cols:
             continue
 
-        static_elements = [col for col in cols if 'off-grid electrolysis' in col]
-        dynamic_elements = [col for col in cols if not 'off-grid electrolysis' in col]
-        
+        static_elements = [col for col in cols if "off-grid electrolysis" in col]
+        dynamic_elements = [col for col in cols if not "off-grid electrolysis" in col]
+
         if dynamic_elements:
-            logger.info(f"Applying errors to {bus} {carrier} for columns: {cols}")
+            logger.info(
+                f"Applying errors to {bus} {carrier} for columns: {dynamic_elements}"
+            )
 
             comp = n.components[component_type].dynamic[p_col]
 
@@ -146,15 +148,21 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             # Make sure to align snapshots first
             new_p = new_p.loc[comp.index]
             comp[dynamic_elements] = new_p
-        
+
         if static_elements:
-            logger.info(f"Applying errors to {bus} {carrier} for static elements: {cols}")
+            # Transform baseload demand for offgrid electrolysis into-time-dependent demand
+
+            logger.info(
+                f"Applying errors to {bus} {carrier} for static elements: {static_elements}"
+            )
 
             comp = n.components[component_type].static
 
             # Apply the errors onto all columns from generators[col]
-            new_p = comp.loc[static_elements, 'p_set'].multiply(
-                1 + expanded_errors.loc[:, (bus, component_type, carrier)].mean()
+            new_p = (
+                (1 + expanded_errors.loc[:, (bus, component_type, carrier)])
+                .to_frame("p_set")
+                .dot(comp.loc[static_elements, "p_set"].to_frame("p_set").T)
             )
 
             # Errors may cause values below 0 which is unrealistic, so clip accordingly
@@ -164,7 +172,10 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
 
             # Assign the new values back to the generators dataframe
             # (this propagates to the network object n because it is a reference, not a copy)
-            comp.loc[static_elements, 'p_set'] = new_p
+            new_p = new_p.loc[n.snapshots]
+            n.components[component_type].dynamic[p_col].loc[
+                new_p.index, new_p.columns
+            ] = new_p
 
     return n
 
