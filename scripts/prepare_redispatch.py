@@ -48,10 +48,18 @@ def fix_dispatch(
         return (dispatch_t / p_nom).round(5).fillna(0)
 
     for comp in dispatch_result.components[
-        ["Generator", "Link", "StorageUnit", "Store"]
+        ["Generator", "Line", "Link", "StorageUnit", "Store"]
     ]:
         if comp.name in ["Generator", "Store", "StorageUnit"]:
             p_fix = comp.dynamic.p
+
+            # Some components are still expendable, e.g. EU-wide fuel sources; make them non-extendable
+            col = [c for c in comp.static.columns if "extendable" in c][0]
+            base_network.components[comp.name].static[col] = False
+
+        elif comp.name == "Line":
+            # Do not fix the dispatch for lines (intra-GB). Skip explicitly
+            continue
 
         elif comp.name == "Link":
             # Do not fix the dispatch for intra-GB links
