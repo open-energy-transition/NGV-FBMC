@@ -165,6 +165,32 @@ class ResultsComputer(ResultsComputerBase):
         producer_surplus = cashflow_of_production.sub(opex_of_production, fill_value=0)
         return producer_surplus
 
+    @metric(restricted_to="dispatch")
+    def storage_surplus(self, n: pypsa.Network, **kwargs):  # To be used in the Dispatch model only
+        """
+        The method returns a disaggregated data frame with the time series of the storage surplus per component (for GB only).
+        Storage surplus = electricity cashflow - opex (vom).
+        """
+        # Filter all components that inject or absorb power to/from the AC grid of GB.
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=False,
+                                                     groupby=["name", "carrier", "country"]).xs("GB", level="country")
+
+        # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
+        component_opex = n.statistics.opex(groupby=["name", "carrier"],
+                                           groupby_time=False)
+
+        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "country"], groupby_time = False)
+
+        # --- Align both dataframes to have the exact same index ---
+        energy_balance_aligned_opex, component_opex = energy_balance.align(component_opex, join='inner')
+        energy_balance_aligned_cashflows, component_cashflows = energy_balance.align(component_cashflows, join='inner')
+
+        opex_of_storage_units = component_opex.loc["StorageUnit"]
+        cashflow_of_storage_units = component_cashflows.loc["StorageUnit"]
+
+        storage_surplus = cashflow_of_storage_units.sub(opex_of_storage_units, fill_value=0)
+        return storage_surplus
+
 
 if __name__ == "__main__":
     rc = ResultsComputer(year=2030)
