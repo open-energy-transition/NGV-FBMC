@@ -48,9 +48,9 @@ def fix_dispatch(
         return (dispatch_t / p_nom).round(5).fillna(0)
 
     for comp in dispatch_result.components[
-        ["Generator", "Line", "Link", "StorageUnit", "Store"]
+        ["Generator", "Line", "Link", "StorageUnit"]
     ]:
-        if comp.name in ["Generator", "Store", "StorageUnit"]:
+        if comp.name in ["Generator", "StorageUnit"]:
             p_fix = comp.dynamic.p
 
             # Some components are still expendable, e.g. EU-wide fuel sources; make them non-extendable
