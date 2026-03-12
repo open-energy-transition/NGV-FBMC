@@ -6,6 +6,7 @@
 import logging
 import re
 import pypsa
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +199,8 @@ def add_waste_element(
         name="EU waste",
         bus="EU waste",
         carrier="waste",
-        p_nom_extendable=True,
+        p_nom_extendable=False,
+        p_nom=np.inf,
         marginal_cost={
             2030: 19.0145,
             2040: 21.131,
