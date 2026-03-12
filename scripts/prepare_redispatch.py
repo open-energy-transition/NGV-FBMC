@@ -367,6 +367,7 @@ def create_up_down_plants(
                 p_max_pu=up_limit.loc[:, g_multilink.index],
                 marginal_cost=prices_multilink["offer"].loc[:, g_multilink.index],
                 p_nom=g_multilink.p_nom,
+                reversed=False,  # Special attribute required in solve_network.py - of no model relevance
             )
             logger.info(
                 f"Added multi-Link ramp up components for carriers {g_multilink.carrier.unique()}"
@@ -387,6 +388,7 @@ def create_up_down_plants(
                 p_max_pu=0,
                 marginal_cost=prices_multilink["bid"].loc[:, g_multilink.index],
                 p_nom=g_multilink.p_nom,
+                reversed=False,  # Special attribute required in solve_network.py - of no model relevance
             )
             logger.info(
                 f"Added multi-Link ramp down components for carriers {g_multilink.carrier.unique()}"
