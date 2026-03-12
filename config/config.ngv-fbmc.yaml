@@ -167,7 +167,7 @@ carrier_mapping:
     EV V2G: home battery
   strike_price_mapping:
     biomass: [solid biomass]
-    offwind-dc: [offwind-ac-fb-r, offwind-ac-fl-r, offwind-dc]
+    offwind-dc: [offwind-ac-fb-r, offwind-ac-fl-r, offwind-dc, offwind-dc-fl-oh]
     onwind: [onwind]
     solar: [solar-pv-utility, solar-pv-rooftop, solar]
     waste: [waste]
