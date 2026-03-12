@@ -54,7 +54,7 @@ class ResultsComputer(ResultsComputerBase):
     def net_position(self, n: pypsa.Network, **kwargs):
         return NotImplementedError()
 
-    @metric
+    @metric(restricted_to= "redispatch")
     def constraint_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         # Constraint costs include both re-dispatch and counter-trading costs
         constraint_carriers = n.carriers.filter(
@@ -67,7 +67,7 @@ class ResultsComputer(ResultsComputerBase):
 
         return constraint_costs
 
-    @metric
+    @metric(restricted_to= "redispatch")
     def countertrading_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         counter_trading_carriers = n.carriers.filter(
             regex=r"Link ramp (up|down)$", axis=0
@@ -80,7 +80,7 @@ class ResultsComputer(ResultsComputerBase):
         return counter_trading_costs
 
 
-    @metric
+    @metric(restricted_to= "redispatch")
     def redispatch_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         redispatch_carriers = n.carriers.filter(
             regex=r"(Generator|StorageUnit) ramp (up|down)$", axis=0
@@ -91,6 +91,14 @@ class ResultsComputer(ResultsComputerBase):
         )
 
         return redispatch_costs
+
+    @metric(restricted_to= "redispatch")
+    def load_shedding_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+        load_shedding_costs = n.statistics.opex(
+            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier="Load Shedding"
+        )
+
+        return load_shedding_costs
 
     @metric(restricted_to= "dispatch")
     def consumer_costs(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
