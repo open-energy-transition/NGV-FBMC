@@ -219,19 +219,18 @@ def add_waste_element(
     # Attach the electricity from waste generator as link to all GB buses with AC carrier
     n_merged.add(
         "Link",
-        name=ref_waste_gens["bus"].to_numpy(),
-        suffix=" waste for electricity",
+        name=ref_waste_gens.index,
         bus0="EU waste",
-        bus1=ref_waste_gens["bus"].to_numpy(),
+        bus1=ref_waste_gens["bus"],
         bus2="co2 atmosphere",
         carrier="waste",
         efficiency=0.2102,  # hard coded from fes_powerplants_inc_tech_data.csv
         efficiency2=0,  # EU regs consider waste to be a non-emitting renewable
-        p_nom_extendable=ref_waste_gens["p_nom_extendable"].to_numpy(),
-        p_nom=ref_waste_gens["p_nom"].to_numpy(),
+        p_nom_extendable=ref_waste_gens["p_nom_extendable"],
+        p_nom=ref_waste_gens["p_nom"],
         capital_cost=ref_waste_gens[
             "capital_cost"
-        ].to_numpy(),  # Not normalised, as capacity expansion is off, this number will not affect the model results
+        ],  # Not normalised, as capacity expansion is off, this number will not affect the model results
         marginal_cost=3.145,  # from fes_powerplants_inc_tech_data.csv, not normalized for lack of suitable reference
         marginal_cost_quadratic=0,
     )
@@ -249,6 +248,9 @@ def add_waste_element(
         n_merged.c["Generator"].dynamic[p_lim] = (
             n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
         )
+
+    # Remove the original waste generators after the link version is created
+    n_merged.remove("Generator", ref_waste_gens.index)
 
     return n_merged
 
