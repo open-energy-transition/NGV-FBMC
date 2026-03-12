@@ -6,6 +6,7 @@ redispatch:
   unconstrain_lines_and_links: true
   no_redispatch_carriers:
   - nuclear
+  - co2 sequestered
 
 etys:
   use_future_capacities: true
