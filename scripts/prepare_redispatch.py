@@ -342,21 +342,6 @@ def create_up_down_plants(
                     direction=direction,
                 )
 
-                # Add a fuel-price adjustment for multi-links connected to fuel source buses.
-                # The fuel source generation cost at bus0 is otherwise unaffected by bid/offer multipliers.
-                # fuel_price_by_bus = base_network.generators.groupby("bus")[
-                #     "marginal_cost"
-                # ].mean()
-                # fuel_price = g_multilink.bus0.map(fuel_price_by_bus).fillna(0)
-                # fuel_multiplier = g_multilink.carrier.map(
-                #     bids_and_offers[f"{direction}_multiplier"]
-                # ).fillna(1)
-                # prices_static = prices_static + fuel_price * (fuel_multiplier - 1)
-
-                # prices_dynamic = interconnector_bid_offer_profile.filter(
-                #     regex=f".* {direction}$"
-                # ).rename(columns=lambda x: x.replace(" " + direction, ""))
-
                 # Prices are static in this case, but for consistency we add them to the dynamic attribute
                 prices_time = pd.DataFrame(
                     [prices_static.values],
