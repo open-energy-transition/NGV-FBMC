@@ -46,9 +46,6 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
     # Work on a copy of the network
     n = n.copy()
 
-    # Change name
-    n.name = f"{n.name} Trader Forecast (TF)"
-
     # Load forecast errors
     relative_errors = pd.read_parquet(error_fp)
 
@@ -109,7 +106,6 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             "loads": "p_set",
         }[component_type]
 
-        comp = n.components[component_type].dynamic[p_col]
         cols = (
             n.components[component_type]
             .static.loc[
@@ -126,23 +122,60 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
 
         if not cols:
             continue
-        logger.info(f"Applying errors to {bus} {carrier} for columns: {cols}")
 
-        # Apply the errors onto all columns from generators[col]
-        new_p = comp[cols].multiply(
-            1 + expanded_errors.loc[:, (bus, component_type, carrier)], axis="index"
-        )
+        static_elements = [col for col in cols if "off-grid electrolysis" in col]
+        dynamic_elements = [col for col in cols if not "off-grid electrolysis" in col]
 
-        # Errors may cause values below 0 which is unrealistic, so clip accordingly
-        # We could also clip > 1, but then we need to differentiate between
-        # loads (absolute timeseries) and generators (pu timeseries)
-        new_p = new_p.clip(lower=0)  # , upper=max_value)
+        if dynamic_elements:
+            logger.info(
+                f"Applying errors to {bus} {carrier} for columns: {dynamic_elements}"
+            )
 
-        # Assign the new values back to the generators dataframe
-        # (this propagates to the network object n because it is a reference, not a copy)
-        # Make sure to align snapshots first
-        new_p = new_p.loc[comp.index]
-        comp[cols] = new_p
+            comp = n.components[component_type].dynamic[p_col]
+
+            # Apply the errors onto all columns from generators[col]
+            new_p = comp[dynamic_elements].multiply(
+                1 + expanded_errors.loc[:, (bus, component_type, carrier)], axis="index"
+            )
+
+            # Errors may cause values below 0 which is unrealistic, so clip accordingly
+            # We could also clip > 1, but then we need to differentiate between
+            # loads (absolute timeseries) and generators (pu timeseries)
+            new_p = new_p.clip(lower=0)  # , upper=max_value)
+
+            # Assign the new values back to the generators dataframe
+            # (this propagates to the network object n because it is a reference, not a copy)
+            # Make sure to align snapshots first
+            new_p = new_p.loc[comp.index]
+            comp[dynamic_elements] = new_p
+
+        if static_elements:
+            # Transform baseload demand for offgrid electrolysis into-time-dependent demand
+
+            logger.info(
+                f"Applying errors to {bus} {carrier} for static elements: {static_elements}"
+            )
+
+            comp = n.components[component_type].static
+
+            # Apply the errors onto all columns from generators[col]
+            new_p = (
+                (1 + expanded_errors.loc[:, (bus, component_type, carrier)])
+                .to_frame("p_set")
+                .dot(comp.loc[static_elements, "p_set"].to_frame("p_set").T)
+            )
+
+            # Errors may cause values below 0 which is unrealistic, so clip accordingly
+            # We could also clip > 1, but then we need to differentiate between
+            # loads (absolute timeseries) and generators (pu timeseries)
+            new_p = new_p.clip(lower=0)  # , upper=max_value)
+
+            # Assign the new values back to the generators dataframe
+            # (this propagates to the network object n because it is a reference, not a copy)
+            new_p = new_p.loc[n.snapshots]
+            n.components[component_type].dynamic[p_col].loc[
+                new_p.index, new_p.columns
+            ] = new_p
 
     return n
 
