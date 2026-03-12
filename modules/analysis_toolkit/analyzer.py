@@ -64,7 +64,7 @@ class ResultsComputer(ResultsComputerBase):
             groupby_time=self.groupby_time,
             groupby=self.groupby). \
             drop(["DC"], level="carrier") \
-            .filter(like="GB", axis=0)
+            .xs("GB", level="country")
         return net_position_gb.sum(axis=0)
 
     def _get_gb_interconnector_flows(self, n: pypsa.Network):
