@@ -118,6 +118,29 @@ def _apply_multiplier(
     return new_marginal_costs
 
 
+def _get_multilink_carriers(network: pypsa.Network) -> set[str]:
+    """
+    Identify carriers that are implemented as multi-Link components (with bus0, bus1, and bus2).
+
+    These are typically fossil fuel plants that track both fuel input and CO2 emissions.
+
+    Parameters
+    ----------
+    network: pypsa.Network
+        Network to analyze
+
+    Returns
+    -------
+    set[str]
+        Set of carrier names that are implemented as multi-Link components
+    """
+    multilink_carriers = set()
+    links_with_bus2 = network.links[network.links.bus2 != ""].index
+    if len(links_with_bus2) > 0:
+        multilink_carriers = set(network.links.loc[links_with_bus2, "carrier"].unique())
+    return multilink_carriers
+
+
 def create_up_down_plants(
     base_network: pypsa.Network,
     dispatch_result: pypsa.Network,
@@ -128,7 +151,10 @@ def create_up_down_plants(
     no_redispatch_carriers: list[str],
 ):
     """
-    Add generators and storage units components that mimic increase / decrease in dispatch
+    Add generators and links components that mimic increase / decrease in dispatch
+
+    For multi-Link technologies (fossil fuel plants with CO2 tracking), adds Link components
+    instead of Generators to properly account for fuel input and CO2 emissions.
 
     Parameters
     ----------
@@ -147,6 +173,9 @@ def create_up_down_plants(
     no_redispatch_carriers: list[str]
         List of carriers to exclude from being redispatched.
     """
+    # Identify which carriers are represented as multi-Link components (with bus2 for CO2 tracking)
+    multilink_carriers = _get_multilink_carriers(base_network)
+
     for comp in base_network.components[["Generator", "StorageUnit", "Link"]]:
         base_network.add("Carrier", [f"{comp.name} ramp up", f"{comp.name} ramp down"])
 
@@ -177,109 +206,257 @@ def create_up_down_plants(
                 },
             )
 
-        g_up = g.copy()
-        g_down = g.copy()
-
-        # Compute dispatch limits for the up and down generators
-        result_component = dispatch_result.components[comp.name]
-        dynamic_p = (
-            result_component.dynamic.p0
-            if comp.name == "Link"
-            else result_component.dynamic.p
-        )
-
-        up_limit = (
-            dispatch_result.get_switchable_as_dense(comp.name, "p_max_pu")
-            * result_component.static.p_nom
-            - dynamic_p
-        ).clip(0) / result_component.static.p_nom
-        if comp.name == "Generator":
-            down_limit = -dynamic_p / result_component.static.p_nom
+        # Separate multi-Link carriers from others
+        if comp.name == "Link":
+            g_multilink = g[g.carrier.isin(multilink_carriers)]
+            g_simple = g[~g.carrier.isin(multilink_carriers)]
         else:
+            g_multilink = pd.DataFrame()
+            g_simple = g
+
+        # Process simple components (generators and simple links) with Generator ramp up/down
+        if not g_simple.empty:
+            g_up = g_simple.copy()
+            g_down = g_simple.copy()
+
+            # Compute dispatch limits for the up and down generators
+            result_component = dispatch_result.components[comp.name]
+            dynamic_p = result_component.dynamic["p0" if comp.name == "Link" else "p"]
+
+            # Up limit and down limit are calculated differently:
+            # Up limit is any remaining available capacity up until the maximum available capacity
+            # Down limit is any dispatch that can be reduced down until the minimum available capacity (zero or higher for some technologies, negative for interconnectors)
+            up_limit = (
+                dispatch_result.get_switchable_as_dense(comp.name, "p_max_pu")
+                - dynamic_p / result_component.static.p_nom
+            ).clip(lower=0)
+
             down_limit = (
                 dispatch_result.get_switchable_as_dense(comp.name, "p_min_pu")
-                * result_component.static.p_nom
-                - dynamic_p
-            ) / result_component.static.p_nom
+                - dynamic_p / result_component.static.p_nom
+            ).clip(upper=0)
 
-        prices = {}
-        for direction, df in [("offer", g_up), ("bid", g_down)]:
-            # Create a shared price profile for all up/down plants including interconnectors
-            # the time-independent for conventional generators is casted to a time-dependent (fixed) profile
-            # to have one dataframe for all cases, because we represent fossil generation assets
-            # as Links rather than Generators (in the GB dispatch model)
-            # Add bid/offer multipliers for conventional generators
-            prices_static = _apply_multiplier(
-                df=df,
-                multiplier=bids_and_offers[f"{direction}_multiplier"],
-                renewable_strike_prices=renewable_strike_prices,
-                direction=direction,
+            prices = {}
+            for direction, df in [("offer", g_up), ("bid", g_down)]:
+                # Create a shared price profile for all up/down plants including interconnectors
+                # the time-independent for conventional generators is casted to a time-dependent (fixed) profile
+                # to have one dataframe for all cases, because we represent fossil generation assets
+                # as Links rather than Generators (in the GB dispatch model)
+                # Add bid/offer multipliers for conventional generators
+                prices_static = _apply_multiplier(
+                    df=df,
+                    multiplier=bids_and_offers[f"{direction}_multiplier"],
+                    renewable_strike_prices=renewable_strike_prices,
+                    direction=direction,
+                )
+
+                prices_dynamic = interconnector_bid_offer_profile.filter(
+                    regex=f".* {direction}$"
+                ).rename(columns=lambda x: x.replace(" " + direction, ""))
+
+                # Turn prices_static into a DataFrame with the same index as prices_dynamic
+                # by repeating the static prices for each timestamp in the dynamic prices
+                prices[direction] = pd.DataFrame(
+                    [prices_static.values],
+                    index=[prices_dynamic.index[0]],
+                    columns=prices_static.index,
+                ).reindex(prices_dynamic.index, method="ffill")
+
+                # Overwrite the prices for interconnectors with the dynamic profile
+                # some entries are also present in the static data, but the dynamic
+                # profiles take precedence
+                prices[direction].loc[:, prices_dynamic.columns] = prices_dynamic
+
+            # Bus to connect the up/down plants to, same for _up and _down
+            bus = None
+            if comp.name in ["Generator", "StorageUnit"]:
+                # Simple case: connect to the same bus as the original plant
+                bus = g_up.bus
+            elif comp.name in ["Link", "Line"]:
+                # In the GB dispatch model we always connect to bus0, which is the GB bus
+                # However for generating assets that are represented as Links (e.g. OCGT)
+                # the relevant bus is bus1 (which is GB connected)
+                # Emitting generators with bus0, bus1 and bus2 set: use bus1
+                # Buses with bus0 matching "GB\s+": use bus0
+                # otherwise use bus0
+                #
+                # Important: This attaches the up/down generators for interconnector redispatch to the GB side, not the RoE side.
+                # this is beneficial for us, as we can easily remove all other components from the RoE side.
+                # The redispatch generators are later moved to the right RoE bus.
+                bus = g_up.bus1.where(g_up.bus2 != "", g_up.bus0)
+            # Add generators that can increase dispatch
+            base_network.add(
+                "Generator",
+                g_up.index,
+                suffix=" ramp up",
+                carrier=f"{comp.name} ramp up",
+                p_min_pu=0,
+                p_max_pu=up_limit.loc[:, g_up.index],
+                marginal_cost=prices["offer"].loc[:, g_up.index],
+                p_nom=g_up.p_nom,
+                bus=bus,
             )
 
-            prices_dynamic = interconnector_bid_offer_profile.filter(
-                regex=f".* {direction}$"
-            ).rename(columns=lambda x: x.replace(" " + direction, ""))
+            # Add generators that can decrease dispatch
+            base_network.add(
+                "Generator",
+                g_down.index,
+                suffix=" ramp down",
+                carrier=f"{comp.name} ramp down",
+                p_min_pu=down_limit.loc[:, g_down.index],
+                p_max_pu=0,
+                marginal_cost=prices["bid"].loc[:, g_down.index],
+                p_nom=g_down.p_nom,
+                bus=bus,
+            )
 
-            # Turn prices_static into a DataFrame with the same index as prices_dynamic
-            # by repeating the static prices for each timestamp in the dynamic prices
-            prices[direction] = pd.DataFrame(
-                [prices_static.values],
-                index=[prices_dynamic.index[0]],
-                columns=prices_static.index,
-            ).reindex(prices_dynamic.index, method="ffill")
+            logger.info(
+                f"Added {comp.name} for carriers {g_up.carrier.unique()} that can mimic increase and decrease in dispatch"
+            )
 
-            # Overwrite the prices for interconnectors with the dynamic profile
-            # some entries are also present in the static data, but the dynamic
-            # profiles take precedence
-            prices[direction].loc[:, prices_dynamic.columns] = prices_dynamic
+        # Process multi-Link components with Link ramp up/down
+        if not g_multilink.empty:
+            result_component = dispatch_result.components[comp.name]
+            dynamic_p = result_component.dynamic.p0
 
-        # Bus to connect the up/down plants to, same for _up and _down
-        bus = None
-        if comp.name in ["Generator", "StorageUnit"]:
-            # Simple case: connect to the same bus as the original plant
-            bus = g_up.bus
-        elif comp.name in ["Link", "Line"]:
-            # In the GB dispatch model we always connect to bus0, which is the GB bus
-            # However for generating assets that are represented as Links (e.g. OCGT)
-            # the relevant bus is bus1 (which is GB connected)
-            # Emitting generators with bus0, bus1 and bus2 set: use bus1
-            # Buses with bus0 matching "GB\s+": use bus0
-            # otherwise use bus0
-            #
-            # Important: This attaches the up/down generators for interconnector redispatch to the GB side, not the RoE side.
-            # this is beneficial for us, as we can easily remove all other components from the RoE side.
-            # The redispatch generators are later moved to the right RoE bus.
-            bus = g_up.bus1.where(g_up.bus2 != "", g_up.bus0)
+            # Up limit and down limit are calculated differently:
+            # Up limit is any remaining available capacity up until the maximum available capacity
+            # Down limit is any dispatch that can be reduced down until the minimum available capacity (zero or higher for some technologies, negative for interconnectors)
+            up_limit = (
+                dispatch_result.get_switchable_as_dense(comp.name, "p_max_pu")
+                - dynamic_p / result_component.static.p_nom
+            ).clip(lower=0)
 
-        # Add generators that can increase dispatch
-        base_network.add(
-            "Generator",
-            g_up.index,
-            suffix=" ramp up",
-            carrier=f"{comp.name} ramp up",
-            p_min_pu=0,
-            p_max_pu=up_limit.loc[:, g_up.index],
-            marginal_cost=prices["offer"].loc[:, g_up.index],
-            p_nom=g_up.p_nom,
-            bus=bus,
-        )
+            down_limit = (
+                dispatch_result.get_switchable_as_dense(comp.name, "p_min_pu")
+                - dynamic_p / result_component.static.p_nom
+            ).clip(upper=0)
 
-        # Add generators that can decrease dispatch
-        base_network.add(
-            "Generator",
-            g_down.index,
-            suffix=" ramp down",
-            carrier=f"{comp.name} ramp down",
-            p_min_pu=down_limit.loc[:, g_down.index],
-            p_max_pu=0,
-            marginal_cost=prices["bid"].loc[:, g_down.index],
-            p_nom=g_down.p_nom,
-            bus=bus,
-        )
+            # Calculate marginal costs for up/down links with bid/offer multipliers applied
+            prices_multilink = {}
+            for direction in ["offer", "bid"]:
+                prices_static = _apply_multiplier(
+                    df=g_multilink,
+                    multiplier=bids_and_offers[f"{direction}_multiplier"],
+                    renewable_strike_prices=renewable_strike_prices,
+                    direction=direction,
+                )
 
-        logger.info(
-            f"Added {comp.name} for carriers {g_up.carrier.unique()} that can mimic increase and decrease in dispatch"
-        )
+                # Add a fuel-price adjustment for multi-links connected to fuel source buses.
+                # The fuel source generation cost at bus0 is otherwise unaffected by bid/offer multipliers.
+                # fuel_price_by_bus = base_network.generators.groupby("bus")[
+                #     "marginal_cost"
+                # ].mean()
+                # fuel_price = g_multilink.bus0.map(fuel_price_by_bus).fillna(0)
+                # fuel_multiplier = g_multilink.carrier.map(
+                #     bids_and_offers[f"{direction}_multiplier"]
+                # ).fillna(1)
+                # prices_static = prices_static + fuel_price * (fuel_multiplier - 1)
+
+                # prices_dynamic = interconnector_bid_offer_profile.filter(
+                #     regex=f".* {direction}$"
+                # ).rename(columns=lambda x: x.replace(" " + direction, ""))
+
+                # Prices are static in this case, but for consistency we add them to the dynamic attribute
+                prices_time = pd.DataFrame(
+                    [prices_static.values],
+                    index=[network.snapshots[0]],
+                    columns=prices_static.index,
+                ).reindex(network.snapshots, method="ffill")
+
+                prices_multilink[direction] = prices_time
+
+            # Add ramp up links for multi-Link technologies
+            # The marginal cost already includes the bid/offer multiplier via _apply_multiplier
+            base_network.add(
+                "Link",
+                g_multilink.index,
+                suffix=" ramp up",
+                bus0=g_multilink.bus0,
+                bus1=g_multilink.bus1,
+                bus2=g_multilink.bus2,
+                carrier="Link ramp up",
+                efficiency=g_multilink.efficiency,
+                efficiency2=g_multilink.efficiency2,
+                p_min_pu=0,
+                p_max_pu=up_limit.loc[:, g_multilink.index],
+                marginal_cost=prices_multilink["offer"].loc[:, g_multilink.index],
+                p_nom=g_multilink.p_nom,
+            )
+            logger.info(
+                f"Added multi-Link ramp up components for carriers {g_multilink.carrier.unique()}"
+            )
+
+            # Add ramp down links for multi-Link technologies
+            base_network.add(
+                "Link",
+                g_multilink.index,
+                suffix=" ramp down",
+                bus0=g_multilink.bus0,
+                bus1=g_multilink.bus1,
+                bus2=g_multilink.bus2,
+                carrier="Link ramp down",
+                efficiency=g_multilink.efficiency,
+                efficiency2=g_multilink.efficiency2,
+                p_min_pu=down_limit.loc[:, g_multilink.index],
+                p_max_pu=0,
+                marginal_cost=prices_multilink["bid"].loc[:, g_multilink.index],
+                p_nom=g_multilink.p_nom,
+            )
+            logger.info(
+                f"Added multi-Link ramp down components for carriers {g_multilink.carrier.unique()}"
+            )
+
+            fuel_updown_gens = base_network.c["Generator"].static.query(
+                "`bus` in @buses", local_dict={"buses": g_multilink["bus0"].unique()}
+            )
+
+            logger.info(
+                f"Adding ramp up/down generators for the fuel input of multi-Link components for carriers {fuel_updown_gens['carrier'].unique()}"
+            )
+
+            # Q&D manual map:
+            # CCGT as stand-in for gas (majority of the capacity)
+            # waste is missing, as there are no multipliers
+            bid_offer_map = fuel_updown_gens["carrier"].map(
+                {"gas": "gas-ccgt", "solid biomass": "solid biomass"}
+            )
+
+            up_costs = fuel_updown_gens["marginal_cost"] * bid_offer_map.map(
+                bids_and_offers["offer_multiplier"]
+            ).fillna(1)
+            down_costs = (
+                fuel_updown_gens["marginal_cost"]
+                * bid_offer_map.map(bids_and_offers["bid_multiplier"]).fillna(1)
+                * -1
+            )
+
+            base_network.add(
+                "Generator",
+                fuel_updown_gens.index,
+                suffix=" ramp up",
+                bus=fuel_updown_gens["bus"],
+                carrier="Generator ramp up",
+                p_min_pu=0,
+                p_max_pu=fuel_updown_gens.p_nom,
+                p_nom_extendable=fuel_updown_gens.p_nom_extendable,
+                efficiency=fuel_updown_gens.efficiency,
+                marginal_cost=up_costs,
+            )
+
+            base_network.add(
+                "Generator",
+                fuel_updown_gens.index,
+                suffix=" ramp down",
+                bus=fuel_updown_gens["bus"],
+                carrier="Generator ramp down",
+                p_min_pu=-1,
+                p_max_pu=0,
+                p_nom=fuel_updown_gens.p_nom,
+                p_nom_extendable=fuel_updown_gens.p_nom_extendable,
+                efficiency=fuel_updown_gens.efficiency,
+                marginal_cost=down_costs,
+            )
 
 
 def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
