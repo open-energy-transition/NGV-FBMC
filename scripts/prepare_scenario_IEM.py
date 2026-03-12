@@ -8,6 +8,7 @@ import re
 import pypsa
 import pandas as pd
 import yaml
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,8 @@ def add_waste_element(
         name="EU waste",
         bus="EU waste",
         carrier="waste",
-        p_nom_extendable=True,
+        p_nom_extendable=False,
+        p_nom=np.inf,
         marginal_cost={
             2030: 19.0145,
             2040: 21.131,
@@ -627,6 +629,36 @@ def remove_erroneous_line(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
+    """
+    Patches the bus names to have infinite capacity with p_nom_extendable=False for consistency across scenarios.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the bus names should be patched.
+    """
+
+    # Fuel generators to be affected
+    idx = [
+        "EU lignite",
+        "EU coal",
+        "EU oil primary",
+        "EU uranium",
+        "EU gas",
+        "EU biogas",
+        "EU solid biomass",
+        "EU waste",
+    ]
+
+    logger.info(f"Patching EU fuel generators: {idx}")
+
+    n.c.generators.static.loc[idx, "p_nom"] = np.inf
+    n.c.generators.static.loc[idx, "p_nom_extendable"] = False
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -689,6 +721,8 @@ if __name__ == "__main__":
             logger.info(f"{c}: {c.static.query(f'{col}').index.tolist()}")
 
     n_merged = remove_unused_carriers(n_merged)
+
+    n_merged = patch_EU_fuel_generators(n_merged)
 
     # After merging we get rid of all attributes that are potential outputs from the model
     # Due to https://github.com/PyPSA/PyPSA/issues/1606 we do this on the individual networks before the merge
