@@ -394,6 +394,17 @@ def create_up_down_plants(
                 f"Added multi-Link ramp down components for carriers {g_multilink.carrier.unique()}"
             )
 
+            # Since the fuel generators have inf capacity, we determine the
+            # nominal capacity based on the maximum used capacity used by the GB part of the model
+            g_multilink = g_multilink.filter(regex=r"GB\s", axis="rows")
+            p_gb = dispatch_result.c.links.dynamic.p0[g_multilink.index]
+            # Map column names to the bus0 to get the total transfer from that bus per snapshot
+            p_gb.columns = p_gb.columns.map(g_multilink.bus0)
+            p_gb = p_gb.T.groupby(level=0).sum().T
+
+            p_nom = p_gb.max()
+
+            # Focus on GB, drop all other global fuel buses that are not relevant for the redispatch (non-GB)
             fuel_updown_gens = dispatch_result.c["Generator"].static.query(
                 "`bus` in @buses", local_dict={"buses": g_multilink["bus0"].unique()}
             )
@@ -418,21 +429,11 @@ def create_up_down_plants(
                 * -1
             )
 
-            # Since the fuel generators have inf capacity, we determine the
-            # nominal capacity based on the maximum used capacity
-            p_nom = dispatch_result.c.generators.dynamic["p"][
-                fuel_updown_gens.index
-            ].max()
+            down_limit = (-p_gb / p_nom).clip(upper=0)[fuel_updown_gens.index]
 
-            down_limit = (
-                dispatch_result.get_switchable_as_dense("Generator", "p_min_pu")
-                - dispatch_result.c["Generator"].dynamic["p"] / p_nom
-            ).clip(upper=0)[fuel_updown_gens.index]
+            up_limit = (1 - p_gb / p_nom).clip(lower=0)[fuel_updown_gens.index]
 
-            up_limit = (
-                dispatch_result.get_switchable_as_dense("Generator", "p_max_pu")
-                - dispatch_result.c["Generator"].dynamic["p"] / p_nom
-            ).clip(lower=0)[fuel_updown_gens.index]
+            p_nom = p_nom.loc[up_limit.columns]
 
             base_network.add(
                 "Generator",
@@ -461,6 +462,14 @@ def create_up_down_plants(
                 efficiency=fuel_updown_gens.efficiency,
                 marginal_cost=down_costs,
             )
+
+            # In addition modify the fixed-dispatch of the fuel generators to only provide generation for GB
+            # (The generic approach of fixing it restricts the dispatch to a *must provide* for the full EUR model)
+            base_network.c.generators.dynamic.p_set.loc[:, fuel_updown_gens.index] = (
+                p_gb.loc[:, fuel_updown_gens.index]
+            )
+
+    return base_network
 
 
 def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
@@ -532,7 +541,7 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
     return network
 
 
-def add_eur_buses(network: pypsa.Network) -> pypsa.Network:
+def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
     """
     Add end point buses for each interconnector for a simplified network structure.
 
@@ -643,6 +652,52 @@ def release_annual_fuel_generation_constraints(network: pypsa.Network) -> pypsa.
     return network
 
 
+def cleanup_fuel_components(
+    network: pypsa.Network, dispatch_results: pypsa.Network
+) -> pypsa.Network:
+    """
+    After the model has been merged and reduced, there remain some unused components that need to be manually removed.
+    There are also some components that are of lesser importance to the model and redispatch logic, but cause
+    unnecessary complexity and potential infeasibilities, so we release some constraints for them.
+    """
+
+    components = {"Generator": []}
+
+    for comp_name, comp_indices in components.items():
+        if len(comp_indices) == 0:
+            continue
+        if comp_indices not in network.components[comp_name].static.index:
+            logger.error(
+                f"Expected the following {comp_name} components to be present in the network for removal, but they are not found: {comp_indices}"
+            )
+        else:
+            network.remove(comp_name, comp_indices)
+            logger.info(
+                f"Removed unused {comp_name} components with indices {comp_indices}"
+            )
+
+    # Remove restrictions on lesser used global generators and links
+    # For simplicity we are not enforcing the dispatch constraints here,
+    # as these are multi-stage multi-links that are not easy to handle
+    network.c.generators.dynamic.p_set = network.c.generators.dynamic.p_set.drop(
+        columns=[
+            "EU uranium",  # No redispatch on nuclear anyways
+        ]
+    )
+
+    # Fix oil links and generators missing
+    oil_gen = dispatch_result.generators.query("`bus`.str.contains('EU oil')")
+    oil_buses = dispatch_result.buses.query("`name`.str.contains('EU oil')")
+    oil_refining = dispatch_result.links.query(
+        "`bus0` == 'EU oil primary' and `bus1` == 'EU oil'"
+    )
+    network.add("Bus", oil_buses.index, **oil_buses.to_dict())
+    network.add("Generator", oil_gen.index, **oil_gen.to_dict())
+    network.add("Link", oil_refining.index, **oil_refining.to_dict())
+
+    return network
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -716,7 +771,11 @@ if __name__ == "__main__":
 
     network = drop_existing_eur_buses(network)
 
-    network = add_eur_buses(network)
+    network = add_new_eur_buses(network)
+
+    network = release_annual_fuel_generation_constraints(network)
+
+    network = cleanup_fuel_components(network, dispatch_result)
 
     if snakemake.params["unconstrain_lines_and_links"]:
         # Set line capacities to infinity, so only boundary capabilities bound the optimization instead of line capacities.
