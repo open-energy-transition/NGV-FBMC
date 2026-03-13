@@ -89,6 +89,20 @@ def set_boundary_constraints(
             f"Boundary {boundary}: {len(boundary_lines_mask)} lines, {len(boundary_links_mask)} DC links, "
             f"capacity={capacity_mw} MW"
         )
+        # If there are lines/links in the boundary crossings but not in the network
+        # raise an error with the offending lines/links names for easier debugging
+        missing_lines = set(boundary_lines_mask["name"]) - set(
+            line_s.coords["name"].values
+        )
+        missing_links = set(boundary_links_mask["name"]) - set(
+            link_p.coords["name"].values
+        )
+        if missing_lines or missing_links:
+            raise ValueError(
+                f"Boundary '{boundary}' references lines or links that are not in the network. "
+                f"Missing lines: {missing_lines}. Missing links: {missing_links}."
+            )
+
         boundary_lines = boundary_lines_mask["name"].tolist()
         boundary_links = boundary_links_mask["name"].tolist()
         line_s_boundary = line_s.sel(snapshot=snapshots, name=boundary_lines)
