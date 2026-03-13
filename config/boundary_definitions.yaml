@@ -30,8 +30,6 @@ etys_boundaries_lines:
   B8:
   - bus0: B9-B8-NW3
     bus1: B8-NW3-B7a
-  - bus0: B9-B8-NW3
-    bus1: SW1-B9
   B9:
   - bus0: B9-B8-NW3
     bus1: B9-SW1-EC5-B13-LE1-SC1.5
