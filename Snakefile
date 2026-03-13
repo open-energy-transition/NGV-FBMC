@@ -157,7 +157,7 @@ rule run_gbdispatchmodel_as_rule:
             --manifest-path={input.manifest} \
             --environment=gb-model \
             snakemake \
-                --cores 1 \
+                --profile profiles/default \
                 --snakefile modules/gb-dispatch-model/Snakefile \
                 --directory modules/gb-dispatch-model \
                 --configfile {input.overwrite_configfiles} \
