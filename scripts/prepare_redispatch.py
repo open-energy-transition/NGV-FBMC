@@ -619,6 +619,30 @@ def add_eur_buses(network: pypsa.Network) -> pypsa.Network:
     return network
 
 
+def release_annual_fuel_generation_constraints(network: pypsa.Network) -> pypsa.Network:
+    """
+    openTYNDP imposes some annual generation constraints on fuel-providing Generator components.
+
+    These are needed for a different modelling scope - since we are reducing the scope to only
+    GB here, we release these constraints to avoid infeasibilities in the optimization.
+    """
+
+    idx = network.generators.query(
+        "`index`.str.contains('EU') and (`e_sum_min` > @neg_inf or `e_sum_max` < @pos_inf)",
+        local_dict={"neg_inf": -np.inf, "pos_inf": np.inf},
+    ).index
+    network.c.generators.static.loc[idx, "e_sum_min"] = (
+        network.c.generators.defaults.loc["e_sum_min", "default"]
+    )
+    network.c.generators.static.loc[idx, "e_sum_max"] = (
+        network.c.generators.defaults.loc["e_sum_max", "default"]
+    )
+
+    logger.info(f"Removed annual generation constraint for generator {idx}")
+
+    return network
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
