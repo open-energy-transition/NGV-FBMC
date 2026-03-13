@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: gb-open-market-model contributors
+#
+# SPDX-License-Identifier: CC0-1.0
+
+executor: cluster-generic
+cluster-generic-submit-cmd: >-
+  mkdir -p logs/slurm && sbatch
+  --cpus-per-task={threads}
+  --ntasks-per-node=1
+  --mem={resources.mem_mb}
+  --time={resources.runtime}
+  --job-name="smk-{rule}-{wildcards}"
+  --output=logs/slurm/%x-%j.out
+  --partition=$(if [ {resources.mem_mb} -gt 3000 ] && [ "{resources.partition}" = "small" ]; then echo high-mem; elif [ {resources.runtime} \> "50h" ]; then echo big; else echo {resources.partition}; fi)
+  --exclude=$(if [ "{rule}" = "solve_unconstrained" ] || [ "{rule}" = "solve_constrained" ]; then python profiles/gb-slurm/exclude.py; fi)
+cluster-generic-cancel-cmd: scancel
+default-resources:
+  mem_mb: 3000
+  disk_mb: 4000
+  runtime: 2h
+  partition: small
+  tmpdir: "'/scratch/local'"
+restart-times: 0
+max-jobs-per-timespan: "1/3s"
+max-status-checks-per-second: 1
+local-cores: 1
+latency-wait: 60
+jobs: 999
+keep-going: true
+rerun-incomplete: true
