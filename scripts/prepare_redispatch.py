@@ -394,7 +394,7 @@ def create_up_down_plants(
                 f"Added multi-Link ramp down components for carriers {g_multilink.carrier.unique()}"
             )
 
-            fuel_updown_gens = base_network.c["Generator"].static.query(
+            fuel_updown_gens = dispatch_result.c["Generator"].static.query(
                 "`bus` in @buses", local_dict={"buses": g_multilink["bus0"].unique()}
             )
 
@@ -418,6 +418,22 @@ def create_up_down_plants(
                 * -1
             )
 
+            # Since the fuel generators have inf capacity, we determine the
+            # nominal capacity based on the maximum used capacity
+            p_nom = dispatch_result.c.generators.dynamic["p"][
+                fuel_updown_gens.index
+            ].max()
+
+            down_limit = (
+                dispatch_result.get_switchable_as_dense("Generator", "p_min_pu")
+                - dispatch_result.c["Generator"].dynamic["p"] / p_nom
+            ).clip(upper=0)[fuel_updown_gens.index]
+
+            up_limit = (
+                dispatch_result.get_switchable_as_dense("Generator", "p_max_pu")
+                - dispatch_result.c["Generator"].dynamic["p"] / p_nom
+            ).clip(lower=0)[fuel_updown_gens.index]
+
             base_network.add(
                 "Generator",
                 fuel_updown_gens.index,
@@ -425,8 +441,9 @@ def create_up_down_plants(
                 bus=fuel_updown_gens["bus"],
                 carrier="Generator ramp up",
                 p_min_pu=0,
-                p_max_pu=fuel_updown_gens.p_nom,
-                p_nom_extendable=fuel_updown_gens.p_nom_extendable,
+                p_max_pu=up_limit,
+                p_nom=p_nom,
+                p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
                 marginal_cost=up_costs,
             )
@@ -437,10 +454,10 @@ def create_up_down_plants(
                 suffix=" ramp down",
                 bus=fuel_updown_gens["bus"],
                 carrier="Generator ramp down",
-                p_min_pu=-1,
+                p_min_pu=down_limit,
                 p_max_pu=0,
-                p_nom=fuel_updown_gens.p_nom,
-                p_nom_extendable=fuel_updown_gens.p_nom_extendable,
+                p_nom=p_nom,
+                p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
                 marginal_cost=down_costs,
             )
