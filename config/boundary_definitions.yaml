@@ -14,27 +14,19 @@ etys_boundaries_lines:
   B4:
   - bus0: B4-B2-B3b
     bus1: B5-B4
-  - bus0: B3b      #  ADDED
-    bus1: B6-B5      #  ADDED
-      #- bus0: B2-B1a  #  ADDED
-      #  bus1: B8-NW3-B7a #   ADDED
+  - bus0: B3b
+    bus1: B6-B5
   B5:
-  - bus0: B5-B4     # OK
-    bus1: B6-B5     # OK
-  - bus0: B3b      #  ADDED
-    bus1: B6-B5     # ADDED
-      #- bus0: B2-B1a  #   ADDED
-      #  bus1: B8-NW3-B7a #   ADDED
+  - bus0: B5-B4
+    bus1: B6-B5
+  - bus0: B3b
+    bus1: B6-B5
   B6:
-  - bus0: B6-B5     # OK
-    bus1: B7a-B6     # OK
-      #- bus0: B2-B1a  #   ADDED
-      #  bus1: B8-NW3-B7a #   ADDED
+  - bus0: B6-B5
+    bus1: B7a-B6
   B7a:
-  - bus0: B7a-B6         # OK
-    bus1: B8-NW3-B7a     # OK
-      #- bus0: B2-B1a  #   ADDED
-      #  bus1: B8-NW3-B7a #   ADDED
+  - bus0: B7a-B6
+    bus1: B8-NW3-B7a
   B8:
   - bus0: B9-B8-NW3
     bus1: B8-NW3-B7a
@@ -51,72 +43,68 @@ etys_boundaries_lines:
   LE1:
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: LE1-B14-SC3-SC1.5
-  - bus0: SC1.5-B13-LE1     # SWAPPED
-    bus1: LE1-SC2-SC3       # SWAPPED
-  - bus0: B9-SW1-EC5-B13-LE1-SC1.5     # SWAPPED
-    bus1: B14                          # SWAPPED
-  - bus0: SC1.5-B13-LE1     # ADDED
-    bus1: LE1-B14-SC3-SC1.5       # ADDED
+  - bus0: SC1.5-B13-LE1
+    bus1: LE1-SC2-SC3
+  - bus0: B9-SW1-EC5-B13-LE1-SC1.5
+    bus1: B14
+  - bus0: SC1.5-B13-LE1
+    bus1: LE1-B14-SC3-SC1.5
   B13:
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: SC1-B13
-  - bus0: SC1.5-B13-LE1     # SWAPPED
-    bus1: B13-SC1           # SWAPPED
-  SC1.5:   # 
-  - bus0: B9-SW1-EC5-B13-LE1-SC1.5     # OK
+  - bus0: SC1.5-B13-LE1
+    bus1: B13-SC1
+  SC1.5:
+  - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: SC1.5-B13-LE1
-  - bus0: SC2-SC3     # OK
+  - bus0: SC2-SC3
     bus1: SC3-SC2
-  - bus0: B13-SC1     # OK
+  - bus0: B13-SC1
     bus1: SC1.5-B13-LE1
-  - bus0: LE1-B14-SC3-SC1.5     # ADDED OK
-    bus1: LE1-SC2-SC3           # ADDED
-  - bus0: LE1-B14-SC3-SC1.5         # ADDED
-    bus1: SC1.5-B13-LE1             # ADDED
+  - bus0: LE1-B14-SC3-SC1.5
+    bus1: LE1-SC2-SC3
+  - bus0: LE1-B14-SC3-SC1.5
+    bus1: SC1.5-B13-LE1
 
-  SW1:   # OK
+  SW1:
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: SW1-B9
   - bus0: B9-B8-NW3
     bus1: SW1-B9
   SC2:
-  - bus0: LE1-B14-SC3-SC1.5     # OK
+  - bus0: LE1-B14-SC3-SC1.5
     bus1: LE1-SC2-SC3
-  - bus0: SC1.5-B13-LE1     # SWAPPED
-    bus1: LE1-SC2-SC3       # SWAPPED
+  - bus0: SC1.5-B13-LE1
+    bus1: LE1-SC2-SC3
   - bus0: SC2-SC3
     bus1: SC3-SC2
 
-  SC3:   # OK
+  SC3:
   - bus0: LE1-B14-SC3-SC1.5
     bus1: SC2-SC3
   - bus0: LE1-SC2-SC3
     bus1: SC3-SC2
 
   SC1:
-  - bus0: SC1-B13     # SWAPPED
-    bus1: B13-SC1     # SWAPPED
-  - bus0: SC2-SC3     # OK
+  - bus0: SC1-B13
+    bus1: B13-SC1
+  - bus0: SC2-SC3
     bus1: SC3-SC2
   - bus0: B9-SW1-EC5-B13-LE1-SC1.5
     bus1: SC1.5-B13-LE1
-  - bus0: LE1-B14-SC3-SC1.5     # OK
+  - bus0: LE1-B14-SC3-SC1.5
     bus1: LE1-SC2-SC3
-  - bus0: LE1-B14-SC3-SC1.5     # ADDED.
-    bus1: SC1.5-B13-LE1     # ADDED
+  - bus0: LE1-B14-SC3-SC1.5
+    bus1: SC1.5-B13-LE1
 
   NW2:
   - bus0: NW2-NW1
     bus1: NW3-NW2
-  - bus0: NW2-NW1     # SWAPPED
-    bus1: B8-NW3-B7a        # SWAPPED
+  - bus0: NW2-NW1
+    bus1: B8-NW3-B7a
   NW3:
   - bus0: NW3-NW2
     bus1: B8-NW3-B7a
-      # Bryn: Better convergence without this entry (it leapfrogs the boundary)
-      # Pierre: I added back this entry, to ensure that a flow injection at bus NW1
-      #         that is entirely absorbed by the slack bus is entirely intercepted by this boundary
-      #.        ( PTDF[boundary NW3, bus NW1] = -1)
   - bus0: NW2-NW1
     bus1: B8-NW3-B7a
   B14:   # OK
@@ -134,9 +122,7 @@ etys_boundaries_lines:
     bus1: B4-B2-B3b
   - bus0: B1a-B0
     bus1: B4-B2-B3b
-      #- bus0: B2-B1a     # ADDED
-      #  bus1: B8-NW3-B7a # ADDED
-  NW1:   # OK
+  NW1:
   - bus0: NW1
     bus1: NW2-NW1
 etys_boundaries_links:
@@ -146,5 +132,3 @@ etys_boundaries_links:
   B7a:
   - bus0: B6-B5
     bus1: B8-NW3-B7a
-
-
