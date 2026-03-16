@@ -346,6 +346,81 @@ def create_up_down_plants(
                 - dynamic_p / result_component.static.p_nom
             ).clip(upper=0)
 
+            # For simplicity, add the fuel and CO2 costs for multi-links to
+            # the marginal cost calculation of the Links, rather than the
+            # redispatch Generator components for fuel and CO2.
+            # This offers the advantage of being able to use n.statistics.opex()
+            # on the redispatch generators
+            # To achieve this, modify the marginal cost in the static DataFrame
+            g_multilink = g_multilink.copy()  # work on a copy
+
+            # Oil is more complicated to calculate
+            oil_fuel_costs = (
+                # crude prices
+                network.c.links.static.query("`bus0`=='EU oil primary'")[
+                    "marginal_cost"
+                ]
+                # refining cost
+                + (
+                    network.c.generators.static.query("`bus`=='EU oil primary'")[
+                        "marginal_cost"
+                    ]
+                    / network.c.generators.static.query("`bus`=='EU oil primary'")[
+                        "efficiency"
+                    ]
+                ).item()
+                # CO2 emissions for refining
+                + (-1)
+                * (
+                    network.c.stores.static.query("`bus`=='co2 atmosphere'")[
+                        "marginal_cost"
+                    ].item()
+                    * network.c.links.static.query("`name`=='EU oil refining'")[
+                        "efficiency2"
+                    ].item()
+                )
+            )
+            oil_fuel_costs.index = oil_fuel_costs.index.map(
+                {"EU oil refining": "EU oil"}
+            )
+
+            fuel_cost = (
+                dispatch_result.components["Generator"].static.set_index("bus")[
+                    "marginal_cost"
+                ]
+                / dispatch_result.components["Generator"].static.set_index("bus")[
+                    "efficiency"
+                ]
+            )
+            # Fuel costs for all including oil
+            patched_fuel_cost = pd.concat(
+                [
+                    fuel_cost,
+                    oil_fuel_costs,
+                ]
+            )
+            patched_fuel_cost = patched_fuel_cost.loc[
+                g_multilink["bus0"].unique()
+            ].fillna(0)
+
+            co2_cost = (-1) * (
+                g_multilink["bus2"].map(
+                    dispatch_result.components["Store"].static.set_index("bus")[
+                        "marginal_cost"
+                    ]
+                )
+                * g_multilink["efficiency2"]
+            )
+
+            # New marginal cost: old marginal cost + fuel cost + co2 cost
+            new_marginal_cost = (
+                g_multilink["marginal_cost"]
+                + g_multilink["bus0"].map(patched_fuel_cost)
+                + co2_cost
+            )
+
+            g_multilink["marginal_cost"] = new_marginal_cost
+
             # Calculate marginal costs for up/down links with bid/offer multipliers applied
             prices_multilink = {}
             for direction in ["offer", "bid"]:
@@ -427,27 +502,7 @@ def create_up_down_plants(
                 f"Adding ramp up/down generators for the fuel input of multi-Link components for carriers {fuel_updown_gens['carrier'].unique()}"
             )
 
-            # Q&D manual map:
-            # CCGT as stand-in for gas (majority of the capacity)
-            # waste is missing, as there are no multipliers
-            bid_offer_map = fuel_updown_gens["carrier"].map(
-                {"gas": "gas-ccgt", "solid biomass": "solid biomass"}
-            )
-
-            up_costs = fuel_updown_gens["marginal_cost"] * bid_offer_map.map(
-                bids_and_offers["offer_multiplier"]
-            ).fillna(1)
-            down_costs = (
-                fuel_updown_gens["marginal_cost"]
-                * bid_offer_map.map(bids_and_offers["bid_multiplier"]).fillna(1)
-                * -1
-            )
-
-            down_limit = (-p_gb / p_nom).clip(upper=0)[fuel_updown_gens.index]
-
-            up_limit = (1 - p_gb / p_nom).clip(lower=0)[fuel_updown_gens.index]
-
-            p_nom = p_nom.loc[up_limit.columns]
+            p_nom = p_nom.loc[fuel_updown_gens.index]
 
             base_network.add(
                 "Generator",
@@ -460,7 +515,7 @@ def create_up_down_plants(
                 p_nom=p_nom,
                 p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
-                marginal_cost=up_costs,
+                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
             )
 
             base_network.add(
@@ -474,13 +529,51 @@ def create_up_down_plants(
                 p_nom=p_nom,
                 p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
-                marginal_cost=down_costs,
+                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
             )
 
             # In addition modify the fixed-dispatch of the fuel generators to only provide generation for GB
             # (The generic approach of fixing it restricts the dispatch to a *must provide* for the full EUR model)
             base_network.c.generators.dynamic.p_set.loc[:, fuel_updown_gens.index] = (
                 p_gb.loc[:, fuel_updown_gens.index]
+            )
+
+            ## Need to allow for redispatch for the CO2 store at 0 marginal cost as well
+            # Calculate and Fix dispatch of existing CO2 store for GB only
+            idx = dispatch_result.c.links.static.query(
+                "`bus1` in @gb_buses and `bus2` == 'co2 atmosphere'",
+                local_dict={"gb_buses": gb_buses},
+            ).index
+            emission_gb = (
+                dispatch_result.c.links.dynamic.p0[idx]
+                * dispatch_result.c.links.static.loc[idx, "efficiency2"]
+            ).sum(axis="columns")
+            network.c.stores.dynamic.p_set.loc[:, "co2 atmosphere"] = emission_gb
+
+            # Add up/down plants for the CO2 store as well
+            base_network.add(
+                "Generator",
+                name="co2 atmosphere ramp up",
+                bus="co2 atmosphere",
+                carrier="Store ramp up",
+                p_min_pu=0,
+                p_max_pu=1,
+                p_nom=emission_gb.max(),
+                p_nom_extendable=False,
+                efficiency=1,
+                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
+            )
+            base_network.add(
+                "Generator",
+                name="co2 atmosphere ramp down",
+                bus="co2 atmosphere",
+                carrier="Store ramp down",
+                p_min_pu=-1,
+                p_max_pu=0,
+                p_nom=emission_gb.max(),
+                p_nom_extendable=False,
+                efficiency=1,
+                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
             )
 
     return base_network
