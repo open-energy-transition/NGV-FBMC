@@ -63,6 +63,9 @@ def fix_dispatch(
 
         elif comp.name == "Link":
             # Do not fix the dispatch for intra-GB links
+            # (this applies to DC links, but also to e.g. DSR links;
+            # multi-links that generate electricity are not captured by this,
+            # because their bus0 is a non-GB , global fuel bus)
             intra_gb_links = comp.static.query(
                 "`bus0` in @gb_buses and `bus1` in @gb_buses and `carrier` in ['DC']",
                 local_dict={"gb_buses": gb_buses},

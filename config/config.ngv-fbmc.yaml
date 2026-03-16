@@ -6,7 +6,25 @@ redispatch:
   unconstrain_lines_and_links: true
   no_redispatch_carriers:
   - nuclear
+  - geothermal # No bid/offer multiplier and negligible capacity, so no redispatch for simplicity
   - co2 sequestered
+  - electricity distribution grid # Loads are connected through this carrier; no redispatch on the links connecting the loads
+  # Lack of guidance and clarity on redispatch about the following carriers and components
+  # therefore do not fix their dispatch and allow them to freely redispatch
+  - battery charger
+  - battery discharger
+  - home battery charger
+  - home battery discharger
+  - H2 Electrolysis
+  - H2 Store
+  - h2-ccgt
+  # These carriers from the phase1 / openTYNDP model
+  # We add them here to suppress warnings - due to the logic they will not be added to 
+  # the model anyway, but it makes for a clearer log file
+  - H2 import Pipeline
+  - H2 pipeline
+  - H2 import LH2
+  - DC_OH
 
 etys:
   use_future_capacities: true
