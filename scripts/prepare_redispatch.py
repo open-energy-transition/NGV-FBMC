@@ -67,8 +67,19 @@ def fix_dispatch(
             # multi-links that generate electricity are not captured by this,
             # because their bus0 is a non-GB , global fuel bus)
             intra_gb_links = comp.static.query(
-                "`bus0` in @gb_buses and `bus1` in @gb_buses and `carrier` in ['DC']",
-                local_dict={"gb_buses": gb_buses},
+                "`bus0` in @gb_buses and `bus1` in @gb_buses and `carrier` in @carriers",
+                local_dict={
+                    "gb_buses": gb_buses,
+                    "carriers": [
+                        "DC",
+                        "battery charger",
+                        "battery discharger",
+                        "home battery charger",
+                        "home battery discharger",
+                        "H2 electrolysis",
+                        "h2-ccgt",
+                    ],
+                },
             ).index
 
             other_links = comp.static.index.difference(intra_gb_links)
