@@ -2,8 +2,8 @@ from typing import Callable, Any
 import pypsa
 import pandas as pd
 
-from modules.analysis_toolkit.helpers.config.constants import GROUPBY_OPTIONS, GLOBAL_GROUPBY
 from modules.analysis_toolkit.helpers.config.filepaths import get_network_fps_for_year
+from modules.analysis_toolkit.helpers.config.constants import GROUPBY_OPTIONS, GLOBAL_GROUPBY
 from modules.analysis_toolkit.helpers.results_computer_wrappers import NetworkSelector, metric
 
 

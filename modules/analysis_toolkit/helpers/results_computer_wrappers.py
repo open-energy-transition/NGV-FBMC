@@ -1,5 +1,6 @@
 from typing import Callable, Any, Optional, Dict, Literal
 import pypsa
+import pandas as pd
 from functools import wraps
 
 
@@ -113,23 +114,18 @@ def metric(func: Optional[Callable[..., Any]] = None, *, restricted_to: Optional
                 def compare_diff(self, **kwargs):
                     return self._rc._compare_diff(lambda n: self._f(n, **kwargs))
 
-                def __call__(self, *args, **kwargs):
-                    # Allowed: called with a Network (optionally with kwargs) -> compute and return result
-                    if args:
-                        n = args[0]
-                        combined = self._rc._combine(kwargs)
-                        return self._f(n, **combined)
-                    # Disallow: kwargs without a Network -> ambiguous usage
-                    if kwargs:
-                        raise TypeError(
-                            "Passing kwargs to the metric property without a Network is not supported. "
-                            "Use .{scenario}_{optimization_stage}(**kwargs) or call the metric with a Network: "
-                            "results.revenue(n, **kwargs)"
-                            "where scenario is one of 'sq', 'iem', 'iem_fb' "
-                            "and optimization_stage is one of 'dispatch', 'redispatch'."
-                        )
-                    # No args/kwargs -> return self (no-op), allowing chaining like results.revenue.iem()
-                    return self
+            def __call__(self, **kwargs):
+                # Disallow: kwargs without a Network -> ambiguous usage
+                if kwargs:
+                    raise TypeError(
+                        "Passing kwargs to the metric property without a Network is not supported. "
+                        "Use .{scenario}_{optimization_stage}(**kwargs) or call the metric with a Network: "
+                        "results.revenue(n, **kwargs)"
+                        "where scenario is one of 'sq', 'iem', 'iem_fb' "
+                        "and optimization_stage is one of 'dispatch', 'redispatch'."
+                    )
+                # No args/kwargs -> return self (no-op), allowing chaining like results.revenue.iem()
+                return self
 
             return _BM(instance, bound_fn)
 
