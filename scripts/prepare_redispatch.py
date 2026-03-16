@@ -536,7 +536,7 @@ def create_up_down_plants(
                 p_nom=p_nom,
                 p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
-                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
+                marginal_cost=-0.01,  # Costs are already included in the multi-link marginal cost
             )
 
             # Manually insert oil generator:
