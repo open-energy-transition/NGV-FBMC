@@ -23,42 +23,6 @@ class ResultsComputer(ResultsComputerBase):
     def __init__(self, year: int):
         super().__init__(year=year)
 
-    @metric
-    def consumer_surplus(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def producer_surplus(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def congestion_income(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def storage_surplus(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def border_flows(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def border_price_spreads(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def co2_emissions(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def share_of_renewables(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def net_position(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
     def _get_gb_net_position(self, n: pypsa.Network):
         net_position_gb = n.statistics.energy_balance(
             bus_carrier=["AC"],
