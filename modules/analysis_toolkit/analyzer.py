@@ -83,7 +83,6 @@ class ResultsComputer(ResultsComputerBase):
         """Flows on the boundary lines, which is an approximation to the actual line loading."""
         link_flows = self._get_gb_interconnector_flows(n=n)
         ptdf = get_fb_constraints(year=self.year).set_index(["snapshot", "boundary", "direction"])
-        # TODO: MAKE SURE THAT THE PTDF AND NETWORK.SNAPSHOTS ARE ALIGNED ON THE SAME TIMESTAMPS AND YEAR.
         ptdf.columns.name = "name"
         # contribution from link flows to the boundary loading, based on the ptdf values
         boundary_flows = link_flows.T.mul(ptdf)
@@ -113,8 +112,12 @@ class ResultsComputer(ResultsComputerBase):
         boundaries = Boundaries(network=n, year=self.year)
         boundary_flows_dict = {}
         for boundary_name, boundary in boundaries.items():
-            boundary_flows_dict[(boundary_name, "DIRECT")] = n.lines_t.p0.loc[:, boundary.lines].sum(axis=1) + n.links_t.p0.loc[:, boundary.links].sum(axis=1)
-            boundary_flows_dict[(boundary_name, "OPPOSITE")] = - n.lines_t.p0.loc[:, boundary.lines].sum(axis=1) - n.links_t.p0.loc[:, boundary.links].sum(axis=1)
+            line_flows = n.lines_t.p0.loc[:, boundary.lines].apply(lambda col: col * dict(zip(boundary.lines, boundary.line_directions))[col.name], axis=0)
+            link_flows = n.links_t.p0.loc[:, boundary.links].apply(lambda col: col * dict(zip(boundary.links, boundary.link_directions))[col.name], axis=0)
+            line_flows = line_flows.sum(axis=1) if line_flows.ndim > 1 else line_flows
+            link_flows = link_flows.sum(axis=1) if link_flows.ndim > 1 else link_flows
+            boundary_flows_dict[(boundary_name, "DIRECT")] = line_flows + link_flows
+            boundary_flows_dict[(boundary_name, "OPPOSITE")] = - boundary_flows_dict[(boundary_name, "DIRECT")]
         boundary_flows = pd.DataFrame(boundary_flows_dict, index=n.snapshots).T.stack()
         boundary_flows = boundary_flows.rename_axis(index=["boundary", "direction", "snapshot"])
         boundary_flows = boundary_flows.reorder_levels(["snapshot", "boundary", "direction"])
