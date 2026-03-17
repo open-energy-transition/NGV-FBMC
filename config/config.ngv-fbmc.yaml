@@ -207,7 +207,12 @@ time_aggregation:
 solving:
   options:
     load_shedding: 4e3
+    clip_p_max_pu: 1.e-2
+    curtailment_mode: false
     noisy_costs: false # Upstream models already run solve_network once, so no need to add noise here again
+    skip_iterations: true
+    rolling_horizon: false
+    transmission_losses: 0
     include_objective_constant: false
   solver:
     name: gurobi
