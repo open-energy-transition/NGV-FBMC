@@ -9,6 +9,7 @@ import pypsa
 import pandas as pd
 import yaml
 import numpy as np
+from scripts._helpers import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -646,6 +647,7 @@ if __name__ == "__main__":
             Path(__file__).stem,
             planning_horizons="2030",
         )
+    configure_logging(snakemake)
 
     # Map from configfile
     carrier_map = snakemake.params.carrier_map
