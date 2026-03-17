@@ -9,6 +9,7 @@ Prepare network for constrained optimization.
 This file is based on the gb-dispatch-model's `scripts/gb_model/redispatch/prepare_constrained_network.py` script with some modifications required for the combined model.
 """
 
+import yaml
 import logging
 from pathlib import Path
 from typing import Literal
@@ -891,27 +892,22 @@ def cleanup_fuel_components(
     return network
 
 
-def convert_boundary_crossings(
-    input_file: str, output_file: str, network: pypsa.Network
-) -> None:
+def load_boundary_crossings_file(input_file: str) -> pd.DataFrame:
     """
-    Convert boundary crossings from an external file to a csv file compatible with the original GB redispatch model logic.
-
-    Makes for simpler processing.
+    Load the boundary crossings from yaml file and return a DataFrame with the relevant information for the model.
 
     Parameters
     ----------
     input_file: str
         Path to the input file containing boundary crossings as yaml file.
-    output_file: str
-        Path to the output file where the converted boundary crossings will be saved as csv
-    network: pypsa.Network
-        The network object used to determine the line and link components from for the boundary crossings.
-    """
-    import yaml
-    import pandas as pd
 
-    with open("config/boundary_definitions.yaml") as f:
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe containing the boundary crossings.
+    """
+
+    with open(input_file) as f:
         data = yaml.safe_load(f)
 
     rows = []
@@ -933,6 +929,30 @@ def convert_boundary_crossings(
         df["component"].str.replace("etys_boundaries_l", "L").str[:-1]
     )  # Line or Link instead of etys_boundaries_(lines|links)
 
+    df.loc[:, "bus0"] = "GB " + df["bus0"].str.strip()
+    df.loc[:, "bus1"] = "GB " + df["bus1"].str.strip()
+
+    return df
+
+
+def convert_boundary_crossings(
+    input_file: str, output_file: str, network: pypsa.Network
+) -> None:
+    """
+    Convert boundary crossings from an external file to a csv file compatible with the original GB redispatch model logic.
+
+    Makes for simpler processing.
+
+    Parameters
+    ----------
+    input_file: str
+        Path to the input file containing boundary crossings as yaml file.
+    output_file: str
+        Path to the output file where the converted boundary crossings will be saved as csv
+    network: pypsa.Network
+        The network object used to determine the line and link components from for the boundary crossings.
+    """
+
     lines = network.components.lines.static.query("`carrier`=='AC'")[["bus0", "bus1"]]
     links = network.components.links.static.query("`carrier`=='DC'")[["bus0", "bus1"]]
     components = pd.concat(
@@ -941,8 +961,11 @@ def convert_boundary_crossings(
             links.reset_index().assign(component_n="Link"),
         ]
     )
-    components.loc[:, "bus0"] = components["bus0"].str.replace("GB ", "").str.strip()
-    components.loc[:, "bus1"] = components["bus1"].str.replace("GB ", "").str.strip()
+    components = components.query(
+        "`bus0`.str.contains('GB ') and `bus1`.str.contains('GB ')"
+    ).reset_index(drop=True)
+
+    df = load_boundary_crossings_file(input_file)
 
     df = df.merge(
         components,
@@ -1052,5 +1075,7 @@ if __name__ == "__main__":
 
     # Convert boundary crossings from external file to a more usable format for the solve_network script and export as csv
     convert_boundary_crossings(
-        snakemake.input.boundary_crossings, snakemake.output.boundary_crossings, network
+        input_file=snakemake.input.boundary_crossings,
+        output_file=snakemake.output.boundary_crossings,
+        network=network,
     )
