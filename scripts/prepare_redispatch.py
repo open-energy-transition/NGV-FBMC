@@ -891,6 +891,75 @@ def cleanup_fuel_components(
     return network
 
 
+def convert_boundary_crossings(
+    input_file: str, output_file: str, network: pypsa.Network
+) -> None:
+    """
+    Convert boundary crossings from an external file to a csv file compatible with the original GB redispatch model logic.
+
+    Makes for simpler processing.
+
+    Parameters
+    ----------
+    input_file: str
+        Path to the input file containing boundary crossings as yaml file.
+    output_file: str
+        Path to the output file where the converted boundary crossings will be saved as csv
+    network: pypsa.Network
+        The network object used to determine the line and link components from for the boundary crossings.
+    """
+    import yaml
+    import pandas as pd
+
+    with open("config/boundary_definitions.yaml") as f:
+        data = yaml.safe_load(f)
+
+    rows = []
+    for group in ["etys_boundaries_lines", "etys_boundaries_links"]:
+        for boundary, pairs in data.get(group, {}).items():
+            for p in pairs:
+                rows.append(
+                    {
+                        "boundary_group": group,
+                        "boundary": boundary,
+                        "bus0": p.get("bus0"),
+                        "bus1": p.get("bus1"),
+                    }
+                )
+
+    df = pd.DataFrame(rows)
+    df = df.rename(columns={"boundary_group": "component", "boundary": "Boundary_n"})
+    df.loc[:, "component"] = (
+        df["component"].str.replace("etys_boundaries_l", "L").str[:-1]
+    )  # Line or Link instead of etys_boundaries_(lines|links)
+
+    lines = network.components.lines.static.query("`carrier`=='AC'")[["bus0", "bus1"]]
+    links = network.components.links.static.query("`carrier`=='DC'")[["bus0", "bus1"]]
+    components = pd.concat(
+        [
+            lines.reset_index().assign(component_n="Line"),
+            links.reset_index().assign(component_n="Link"),
+        ]
+    )
+    components.loc[:, "bus0"] = components["bus0"].str.replace("GB ", "").str.strip()
+    components.loc[:, "bus1"] = components["bus1"].str.replace("GB ", "").str.strip()
+
+    df = df.merge(
+        components,
+        on=["bus0", "bus1"],
+        how="left",
+    ).sort_values("name")
+
+    df[["component", "name", "Boundary_n", "bus0", "bus1"]].to_csv(
+        output_file, index=False
+    )
+
+    if df["name"].isna().any():
+        raise ValueError(
+            f"Cannot map some boundary crossings to lines or links. Check {output_file}."
+        )
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -980,3 +1049,8 @@ if __name__ == "__main__":
     network.name = f"{snakemake.wildcards.scenario} ({snakemake.wildcards.planning_horizons}) - redispatch"
 
     network.export_to_netcdf(snakemake.output.network)
+
+    # Convert boundary crossings from external file to a more usable format for the solve_network script and export as csv
+    convert_boundary_crossings(
+        snakemake.input.boundary_crossings, snakemake.output.boundary_crossings, network
+    )

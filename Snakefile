@@ -382,6 +382,7 @@ rule prepare_redispatch:
         network="resources/base/networks/{scenario}/{planning_horizons}.nc",
         dispatch_result=rules.solve_dispatch.output.network,
         interconnector_bid_offer=rules.calc_interconnector_bid_offer_profile.output.bid_offer_profile,
+        boundary_crossings="config/boundary_definitions.yaml",
         # Unchanged from GB dispatch model
         renewable_strike_prices=gbdispatchmodel(
             "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
@@ -391,6 +392,7 @@ rule prepare_redispatch:
         ),
     output:
         network="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
+        boundary_crossings="resources/redispatch/boundary_crossings/{scenario}/{planning_horizons}.csv",
     log:
         "logs/prepare_redispatch/{scenario}/{planning_horizons}.log",
     script:
