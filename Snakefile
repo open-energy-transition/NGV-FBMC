@@ -429,9 +429,7 @@ rule solve_redispatch:
             ),
             [],
         ),
-        boundary_crossings=gbdispatchmodel(
-            "resources/GB-ETYS-subset/etys_boundary_crossings.csv"
-        ),
+        boundary_crossings=rules.prepare_redispatch.output.boundary_crossings,
         # TYNDP specific
         offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
@@ -454,6 +452,7 @@ rule solve_redispatch:
         "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/solve_network.py"
+
 
 rule all:
     input:
