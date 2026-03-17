@@ -597,7 +597,7 @@ def reorder_line_directions(
             )
         elif not switched.empty:
             logger.info(
-                f"Switching direction of flow for {comp_name} between {bus0} and {bus1}"
+                f"Switching direction of flow for {comp_name}: {switched.index.tolist()} to {bus0} -> {bus1}"
             )
             n.c[comp_name].static.loc[switched.index, ["bus0", "bus1"]] = (bus0, bus1)
         else:
