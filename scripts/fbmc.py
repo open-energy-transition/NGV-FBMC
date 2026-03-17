@@ -34,33 +34,6 @@ class FBMCConstraint:
         )
         ram = xr.DataArray.from_series(df["ram"])
 
-        # Workaround 1:
-        # The network interconnectors should match exactly the ptdf name dimension,
-        # since this is currently not the case, we use the LionLink interconnector ptdf
-        # values for the missing BritNed and we remove Gallant, Tarchon and LionLink
-        # (EuroLink)
-        ptdf = xr.concat(
-            [
-                ptdf.drop_sel(name=["Gallant", "Tarchon", "LionLink (EuroLink)"]),
-                ptdf.sel(name="LionLink (EuroLink)").assign_coords(name="BritNed"),
-            ],
-            dim="name",
-        )
-
-        # Workaround 2:
-        # The snapshots should be exactly the same, instead the network is currently for
-        # another year than the PTDF constraint data, so we assume it was actually
-        # computed for the network year (2009)
-        assumed_snapshots = pd.date_range("2009", freq="h", periods=8760)
-        ptdf = ptdf.assign_coords(snapshot=assumed_snapshots)
-        ram = ram.assign_coords(snapshot=assumed_snapshots)
-
-        # Workaround 3:
-        # The only link PTDF value that is strange is the MARES interconnector for the NW2 boundary,
-        # which is +1 in DIRECT and -1 in OPPOSITE direction, while all other interconnectors on all
-        # boundaries are the other way around? Is that a mistake?
-        ptdf.loc[{"name": "MARES", "boundary name": "NW2"}] *= -1
-
         return cls(ptdf, ram)
 
     def to_netcdf(self, ptdf: str, ram: str) -> None:
