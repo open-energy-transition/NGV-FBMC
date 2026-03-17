@@ -607,30 +607,6 @@ def reorder_line_directions(
     return n
 
 
-def remove_erroneous_line(n: pypsa.Network) -> pypsa.Network:
-    """
-    Patches the network by removing an erroneously picked up line between GB EC5 and GB SC3-SC2.
-
-    This is an offshore line connecting an offshore wind hub with onshore, but is wrongly picked up by the processing.
-    Until this is fixed upstream, we remove the line manually to avoid issues with the model results and downstream processing.
-    """
-    idx = n.lines.query(
-        "`bus0` in ['GB EC5', 'GB SC3-SC2'] and `carrier` in ['AC', 'DC']"
-    ).index
-    if not idx.empty:
-        logger.info(
-            f"Path: Removing line {idx[0]} between GB EC5 and GB SC3-SC2 which is erroneously picked up in the model."
-        )
-        n.remove("Line", idx)
-    else:
-        logger.error(
-            f"Path: Expected to find one line connecting GB EC5 and GB SC3-SC2 with carrier AC or DC to remove, but found {len(idx)}. "
-            f"Check for line existence/missing!"
-        )
-
-    return n
-
-
 def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
     """
     Patches the bus names to have infinite capacity with p_nom_extendable=False for consistency across scenarios.
@@ -736,9 +712,6 @@ if __name__ == "__main__":
         n=n_merged,
         manual_boundaries_fp=snakemake.input.external_boundary_definitions,
     )
-
-    # Patch network: Remove erroneously picked up line between GB EC5 and GB SC3-SC2
-    n_merged = remove_erroneous_line(n_merged)
 
     # Cluster the network by time
     # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
