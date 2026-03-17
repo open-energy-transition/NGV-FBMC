@@ -2,6 +2,15 @@ run:
   prefix: ""
   name: "ngv-fbmc"
 
+scenarios:
+  - IEM
+  - SQ
+  # - FBMC
+
+planning_horizons:
+  - 2030
+  # - 2040
+
 redispatch:
   unconstrain_lines_and_links: true
   no_redispatch_carriers:

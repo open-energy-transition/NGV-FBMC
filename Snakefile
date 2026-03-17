@@ -452,3 +452,17 @@ rule solve_redispatch:
         "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/solve_network.py"
+
+rule all:
+    input:
+        expand(
+            "results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+            scenario=config["scenarios"],
+            planning_horizons=config["planning_horizons"],
+        ),
+        expand(
+            "results/redispatch/networks/{scenario}/{planning_horizons}.nc",
+            scenario=config["scenarios"],
+            planning_horizons=config["planning_horizons"],
+        ),
+    default_target: True
