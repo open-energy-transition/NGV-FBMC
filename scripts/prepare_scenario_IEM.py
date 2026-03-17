@@ -6,10 +6,9 @@
 import logging
 import re
 import pypsa
-import pandas as pd
-import yaml
 import numpy as np
 from scripts._helpers import configure_logging
+from scripts.prepare_redispatch import load_boundary_crossings_file
 
 logger = logging.getLogger(__name__)
 
@@ -559,26 +558,7 @@ def reorder_line_directions(
         The network with reordered line directions.
     """
     # Load external boundary crossings file
-    with open(manual_boundaries_fp) as f:
-        boundaries_yaml = yaml.safe_load(f)
-
-    # Flatten the yaml for reading as pd.DataFrame
-    boundaries_flat = {}
-    idx = 0
-    for k, v in boundaries_yaml.items():
-        c = "Line" if "line" in k else "Link"
-
-        for boundary, entries in v.items():
-            for entry in entries:
-                boundaries_flat[idx] = {
-                    "component": c,
-                    "Boundary_n": boundary,
-                    "bus0": f"GB {entry['bus0']}",
-                    "bus1": f"GB {entry['bus1']}",
-                }
-                idx += 1
-
-    boundaries = pd.DataFrame.from_dict(boundaries_flat, orient="index")
+    boundaries = load_boundary_crossings_file(manual_boundaries_fp)
 
     logger.info("Reordering line directions")
     for comp_name, boundary, bus0, bus1 in boundaries.itertuples(index=False):
@@ -592,7 +572,7 @@ def reorder_line_directions(
         )
 
         if correct.empty and switched.empty:
-            logger.error(
+            raise ValueError(
                 f"Expected {comp_name} between {bus0} and {bus1} but None found in the network. "
                 f"Check whether the {comp_name} is missing or whether the manual boundary definition is incorrect."
             )
