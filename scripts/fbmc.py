@@ -74,32 +74,6 @@ class FBMCConstraint:
         net_position_gb = -net_positions_ic.sum("name")
 
         m.add_constraints(
-            (
-                net_position_gb * ptdf_gb.sel(direction="DIRECT")
-                + (net_positions_ic * ptdf_ic.sel(direction="DIRECT")).sum("name")
-                <= ram.sel(direction="DIRECT")
-            ),
-            name="FBMC direct",
-        )
-
-        # FBMC opposite seems to turn the model infeasible, and maybe this has to do
-        # with negative ram values? So we allow violating it by up to half the negative
-        # ram value, but put a cost on it.
-        violation = m.add_variables(
-            lower=0,
-            upper=0.5 * (-ram.sel(direction="OPPOSITE")).clip(min=0),
-            name="FBMC opposite violation",
-        )
-        m.objective += 100 * violation.sum()
-        # Violations are happening on boundaries B3b (a fun one, which has only a negative PTDF value for gb)
-        # and SC2 (positive GB one, and negative ones for Cronos, ElecLink, Kulizumboo, Nautilus, Nemo, NeuConnect)
-
-        m.add_constraints(
-            (
-                -net_position_gb * ptdf_gb.sel(direction="OPPOSITE")
-                - (net_positions_ic * ptdf_ic.sel(direction="OPPOSITE")).sum("name")
-                - violation
-                <= ram.sel(direction="OPPOSITE")
-            ),
-            name="FBMC opposite",
+            net_position_gb * ptdf_gb + (net_positions_ic * ptdf_ic).sum("name") <= ram,
+            name="FBMC",
         )
