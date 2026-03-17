@@ -630,6 +630,14 @@ def create_up_down_plants(
 
             # Add up/down plants for the CO2 store as well
             base_network.add(
+                "Carrier",
+                name="Store ramp up",
+            )
+            base_network.add(
+                "Carrier",
+                name="Store ramp down",
+            )
+            base_network.add(
                 "Generator",
                 name="co2 atmosphere ramp up",
                 bus="co2 atmosphere",
