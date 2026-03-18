@@ -131,11 +131,13 @@ class ResultsComputer(ResultsComputerBase):
         # Constraint costs include both re-dispatch and counter-trading costs
         constraint_carriers = n.carriers.filter(
             regex=r" ramp (up|down)$", axis=0
-        ).index.tolist() + ["Load Shedding"]
+        ).index.tolist() + ["load"]
 
-        constraint_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier=constraint_carriers
-        )
+        constraint_costs = n.statistics.opex(  # todo: not working yet, we need to wait for the marginal cost of links from OET.
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=constraint_carriers,
+        ).query("not bus.str.contains('EU ')")
 
         return constraint_costs
 
@@ -146,8 +148,11 @@ class ResultsComputer(ResultsComputerBase):
         ).index.tolist()
 
         counter_trading_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier=counter_trading_carriers
-        )
+            comps=["Generator"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=counter_trading_carriers
+        ).query('not bus.str.contains("GB ") and carrier.str.contains("ramp")')
 
         return counter_trading_costs
 
@@ -155,19 +160,25 @@ class ResultsComputer(ResultsComputerBase):
     @metric(restricted_to= "redispatch")
     def redispatch_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         redispatch_carriers = n.carriers.filter(
-            regex=r"(Generator|StorageUnit) ramp (up|down)$", axis=0
+            regex=r"(Generator|Link|StorageUnit) ramp (up|down)$", axis=0
         ).index.tolist()
 
         redispatch_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier=redispatch_carriers
-        )
+            comps=["Generator", "Link", "StorageUnit"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers
+        ).query('country=="GB" and bus!="GBNI" and carrier.str.contains("ramp")')
 
         return redispatch_costs
 
     @metric(restricted_to= "redispatch")
     def load_shedding_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         load_shedding_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier="Load Shedding"
+            comps=["Generator"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier="load"
         )
 
         return load_shedding_costs
@@ -187,7 +198,7 @@ class ResultsComputer(ResultsComputerBase):
         return consumer_cost
 
     @metric(restricted_to= "dispatch")
-    def producer_costs(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
+    def producer_costs_in_gb(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
         """
         The method returns a disaggregated data frame with the time series of the producer cost per component (for GB only).
         Producer cost = fuel cost + co2 cost + opex (vom). The first two are extracted with the revenue command.
@@ -217,7 +228,7 @@ class ResultsComputer(ResultsComputerBase):
         return producer_costs
 
     @metric(restricted_to= "dispatch")
-    def producer_surplus(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
+    def producer_surplus_in_gb(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
         """
         The method returns a disaggregated data frame with the time series of the producer cost per component (for GB only).
         Producer surplus = electricity revenue -  fuel cost - co2 cost - opex (vom). The net sum of the first 3 are extracted with the revenue command.
@@ -246,7 +257,7 @@ class ResultsComputer(ResultsComputerBase):
         return producer_surplus
 
     @metric(restricted_to="dispatch")
-    def storage_surplus(self, n: pypsa.Network, **kwargs):  # To be used in the Dispatch model only
+    def storage_surplus_in_gb(self, n: pypsa.Network, **kwargs):  # To be used in the Dispatch model only
         """
         The method returns a disaggregated data frame with the time series of the storage surplus per component (for GB only).
         Storage surplus = electricity cashflow - opex (vom).
