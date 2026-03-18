@@ -103,10 +103,14 @@ def set_boundary_constraints(
                 f"Missing lines: {missing_lines}. Missing links: {missing_links}."
             )
 
-        boundary_lines = boundary_lines_mask["name"].tolist()
-        boundary_links = boundary_links_mask["name"].tolist()
-        line_s_boundary = line_s.sel(snapshot=snapshots, name=boundary_lines)
-        link_p_boundary = link_p.sel(snapshot=snapshots, name=boundary_links)
+        boundary_lines = boundary_lines_mask.set_index("name")["direction"].to_xarray()
+        boundary_links = boundary_links_mask.set_index("name")["direction"].to_xarray()
+        line_s_boundary = (
+            line_s.sel(snapshot=snapshots, name=boundary_lines["name"]) * boundary_lines
+        )
+        link_p_boundary = (
+            link_p.sel(snapshot=snapshots, name=boundary_links["name"]) * boundary_links
+        )
 
         # Sum across lines and DC links to get total flow at the boundary
         lhs = line_s_boundary.sum("name") + link_p_boundary.sum("name")

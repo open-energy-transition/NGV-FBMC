@@ -967,17 +967,29 @@ def convert_boundary_crossings(
 
     df = load_boundary_crossings_file(input_file)
 
-    df = df.merge(
+    direct = df.merge(
         components,
         on=["bus0", "bus1"],
-        how="left",
+        how="inner",
     ).sort_values("name")
 
-    df[["component", "name", "Boundary_n", "bus0", "bus1"]].to_csv(
-        output_file, index=False
-    )
+    opposite = df.merge(
+        components.rename(columns={"bus0": "bus1", "bus1": "bus0"}),
+        on=["bus0", "bus1"],
+        how="inner",
+    ).sort_values("name")
 
-    if df["name"].isna().any():
+    direct = direct.assign(direction=+1)
+    opposite = opposite.assign(direction=-1)
+    all_connections = pd.concat(
+        [direct, opposite], ignore_index=True, axis="index"
+    ).sort_values(["component", "Boundary_n"])
+
+    all_connections[
+        ["component", "name", "Boundary_n", "bus0", "bus1", "direction"]
+    ].to_csv(output_file, index=False)
+
+    if all_connections["name"].isna().any():
         raise ValueError(
             f"Cannot map some boundary crossings to lines or links. Check {output_file}."
         )
