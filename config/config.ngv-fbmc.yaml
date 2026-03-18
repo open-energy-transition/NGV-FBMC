@@ -207,7 +207,7 @@ carrier_mapping:
 
 
 time_aggregation:
-  enable: true
+  enable: false
   method: segment
   parameters:
     num_segments: 2190 # 4x smaller snapshots size
