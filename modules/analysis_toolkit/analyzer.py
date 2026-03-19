@@ -317,6 +317,33 @@ class ResultsComputer(ResultsComputerBase):
     def lost_congestion_income(self):
         return self.congestion_income.iem_dispatch() - self.congestion_income.iem_fb_dispatch()
 
+    # TODO: the following metrics are optional, but they can help find patterns and correlations in the results.
+    #  We can decide later whether they are worth implementing or not.
+    @metric(restricted_to="dispatch")
+    def renewable_dispatch(self):
+        # [optional] renewable production in MW that can help find patterns and correlations
+        return NotImplementedError
+
+    @metric(restricted_to="dispatch")
+    def consumption(self):
+        # [optional] consumption in MW that can help find patterns and correlations
+        return NotImplementedError
+
+    @metric(restricted_to="redispatch")
+    def renewable_redispatch(self):
+        # [optional] ramped up and down renewable production in MW that can help find patterns and correlations
+        return NotImplementedError
+
+    @metric(restricted_to="redispatch")
+    def redispatched_volume(self):
+        # [optional] total volume of ramp up and ramp down redispatch
+        return NotImplementedError
+
+    @metric(restricted_to="redispatch")
+    def countertraded_volume(self):
+        # [optional] total volume of ramp up and ramp down counter-trading
+        return NotImplementedError
+
 
 if __name__ == "__main__":
     rc = ResultsComputer(year=2030)

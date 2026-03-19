@@ -9,6 +9,11 @@ from modules.analysis_toolkit.analyzer import ResultsComputer
 FIG_SIZE = (10, 6)
 
 
+# TODO: in these examples, we have a lot of repeated code (because I coded them quickly).
+#  If you find a better way, please feel free to refactor them.
+#  Let's use the same name for the plot as for the ResultsComputer method that finds the data. If you need to use more
+#  than one method, it might be a sign that you should create a new method in the ResultsComputer that combines the data in the way you need for the plot.
+
 class TimeSeriesPlot:
     @staticmethod
     def interconnector_flows(rc: ResultsComputer, interconnectors: list[str]=None) -> None:
