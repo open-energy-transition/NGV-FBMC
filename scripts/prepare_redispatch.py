@@ -819,6 +819,64 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
             f"Moved {len(ramp_gens)} interconnector ramp up/down generators from {ramp_gens['bus'].unique().item()} to {interconnector['bus1']} for interconnector {interconnector_name}"
         )
 
+    # Moving the the ramp up and down generators also has an effect on their
+    # dispatch behaviour/properties:
+    # * ramp up/down limits need to be inverted and switched
+    # * marginal costs need to be inverted
+    # since the interconnector limits are not changed, these inversions should have a relevant effect and not be just cosmetic
+    logger.info(
+        "Updating marginal_cost and ramp up/down limits for interconnector redispatch components"
+    )
+
+    # Invert the marginal_costs
+    network.generators.loc[ramp_gens.index, "marginal_cost"] *= -1
+
+    ### Switch the down/up limits
+    ramp_down_gens = (interconnectors.index + " ramp down").to_list()
+    ramp_up_gens = (interconnectors.index + " ramp up").to_list()
+    ramp_down_limits = network.components.generators.dynamic.p_min_pu.loc[
+        :, ramp_down_gens
+    ]
+    ramp_up_limits = network.components.generators.dynamic.p_max_pu.loc[:, ramp_up_gens]
+
+    # Remove old limits
+    network.components.generators.dynamic.p_min_pu = (
+        network.components.generators.dynamic.p_min_pu.drop(columns=ramp_down_gens)
+    )
+    network.components.generators.dynamic.p_max_pu = (
+        network.components.generators.dynamic.p_max_pu.drop(columns=ramp_up_gens)
+    )
+
+    # Recalculate new limits and switch labels between them
+    # (old down limit is the negative of the new up limit and vice versa)
+    new_ramp_up_limits, new_ramp_down_limits = -ramp_down_limits, -ramp_up_limits
+    new_ramp_down_limits = new_ramp_down_limits.clip(upper=0)
+    new_ramp_up_limits = new_ramp_up_limits.clip(lower=0)
+    new_ramp_up_limits.columns = new_ramp_up_limits.columns.str.replace(
+        "ramp down", "ramp up"
+    )
+    new_ramp_down_limits.columns = new_ramp_down_limits.columns.str.replace(
+        "ramp up", "ramp down"
+    )
+
+    # Attach new limits
+    network.components.generators.dynamic.p_min_pu.loc[
+        :, new_ramp_down_limits.columns
+    ] = new_ramp_down_limits
+    network.components.generators.dynamic.p_max_pu.loc[:, new_ramp_up_limits.columns] = (
+        new_ramp_up_limits
+    )
+
+    # Modify static df for cosmetics to represent switching of ramp up/down as well
+    network.generators.loc[new_ramp_up_limits.columns, "p_min_pu"] = 0
+    network.generators.loc[new_ramp_up_limits.columns, "p_max_pu"] = (
+        new_ramp_up_limits.max()
+    )
+    network.generators.loc[new_ramp_down_limits.columns, "p_min_pu"] = (
+        new_ramp_down_limits.min()
+    )
+    network.generators.loc[new_ramp_down_limits.columns, "p_max_pu"] = 0
+
     return network
 
 
