@@ -1,5 +1,6 @@
 import pypsa
 import pandas as pd
+import numpy as np
 
 from typing import Literal
 
@@ -7,6 +8,7 @@ from modules.analysis_toolkit.helpers.results_computer_base import ResultsComput
 from modules.analysis_toolkit.helpers.results_computer_wrappers import metric
 from modules.analysis_toolkit.helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
 from modules.analysis_toolkit.helpers.config.filepaths import get_etys_boundaries_geopandas_fp
+from modules.analysis_toolkit.helpers.index_finder import IndexFinder, GeoOptions
 
 
 class ResultsComputer(ResultsComputerBase):
@@ -30,6 +32,8 @@ class ResultsComputer(ResultsComputerBase):
             groupby=self.groupby). \
             drop(["DC"], level="carrier") \
             .xs("GB", level="country")
+        assert np.allclose(net_position_gb.sum(axis=0), self._get_gb_interconnector_flows(n).sum(), atol=1), \
+            "Generation - demand in GB should be approximately equal to the net flow on the interconnectors (with a tolerance of 1 MW, to account for small numerical differences)."
         return net_position_gb.sum(axis=0)
 
     def _get_gb_interconnector_flows(self, n: pypsa.Network):
@@ -40,6 +44,8 @@ class ResultsComputer(ResultsComputerBase):
             groupby_time=self.groupby_time
         ).groupby("name").sum()
         link_names = get_link_columns_in_ptdf(year=self.year)
+        assert set(link_names) == set(IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY)), \
+            "The list of links in the PTDF are different from those in the network. Please check the consistency of the data."
         filter_links_in_ptdf = link_flows.index.get_level_values("name").isin(link_names)
         # filter to only include links that contribute to the ptdf-based boundary loading
         return link_flows[filter_links_in_ptdf]
@@ -282,7 +288,43 @@ class ResultsComputer(ResultsComputerBase):
         storage_surplus = cashflow_of_storage_units.sub(opex_of_storage_units, fill_value=0)
         return storage_surplus
 
+    @metric
+    def interconnector_flows(self, n: pypsa.Network):
+         return self._get_gb_interconnector_flows(n=n)
+
+    @metric
+    def net_position_gb(self, n: pypsa.Network):
+        return self._get_gb_net_position(n=n)
+
+    @metric(restricted_to="dispatch")
+    def congestion_income(self, n: pypsa.Network, **kwargs):
+        """
+        The method returns a disaggregated data frame with the time series of the congestion income per interconnector (for GB only).
+        Congestion income = flow on interconnector * price difference between the two sides of the interconnector.
+        """
+        link_names = IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY)
+        congestion_income = n.statistics.revenue(
+            bus_carrier=["AC", "AC_OH"],
+            groupby_time=False,
+            carrier=["DC", "DC_OH"],
+            groupby=["name"]
+        ).query('name in @link_names').droplevel("component")
+        return congestion_income
+
+    def restricted_capacity(self):
+        return self.interconnector_flows.iem_dispatch() - self.interconnector_flows.iem_fb_dispatch()
+
+    def lost_congestion_income(self):
+        return self.congestion_income.iem_dispatch() - self.congestion_income.iem_fb_dispatch()
+
 
 if __name__ == "__main__":
     rc = ResultsComputer(year=2030)
+    # rc.constraint_costs.iem_redispatch()
+    rc.congestion_income.compare_dispatch()
     print()
+
+    # query where any of the strings in a list are contained in a column
+    # n = rc.ns.iem_redispatch()
+    # ic_names = IndexFinder.get_interconnectors(n)
+    # rc.opex.iem_redispatch().query('index.str.contains("|".join(@ic_names))')
