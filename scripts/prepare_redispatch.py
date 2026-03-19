@@ -778,7 +778,7 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
         * network.get_switchable_as_dense("Link", "p_set").loc[
             :, interconnectors.index
         ],
-        p_nom=np.inf,
+        p_nom=interconnectors.p_nom,
         p_nom_extendable=False,
         marginal_cost=0,
     )
