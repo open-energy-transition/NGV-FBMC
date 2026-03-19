@@ -124,7 +124,7 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             continue
 
         static_elements = [col for col in cols if "off-grid electrolysis" in col]
-        dynamic_elements = [col for col in cols if not "off-grid electrolysis" in col]
+        dynamic_elements = [col for col in cols if "off-grid electrolysis" not in col]
 
         if dynamic_elements:
             logger.info(
