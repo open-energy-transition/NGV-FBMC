@@ -705,10 +705,18 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
     for comp in network.components[["Link", "Line"]]:
         # Drop all Links, except for those where bus0 or bus1 is a GB bus
         # e.g. interconnectors or generating assets represented as Links (e.g. OCGT)
-        idx = comp.static.query(
-            "bus0 not in @gb_buses and bus1 not in @gb_buses",
-            local_dict={"gb_buses": gb_buses},
-        ).index
+        # But preserve components that are connected to only protected buses like oil refining
+        idx = (
+            comp.static.query(
+                "(bus0 not in @gb_buses and bus1 not in @gb_buses)",
+                local_dict={"gb_buses": gb_buses},
+            )
+            .query(
+                "not (`bus0` in @protected_buses and `bus1` in @protected_buses)",
+                local_dict={"protected_buses": protected_buses},
+            )
+            .index
+        )
         network.remove(
             comp.name,
             idx,
