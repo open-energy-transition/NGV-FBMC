@@ -581,6 +581,10 @@ def create_up_down_plants(
             refining_link = dispatch_result.c.links.static.query(
                 "`name` == 'EU oil refining'"
             )
+            # Logic above adds these link already, so we need to remove them first
+            base_network.remove(
+                "Link", refining_link.index, suffix=[" ramp up", " ramp down"]
+            )
 
             base_network.add(
                 "Link",
@@ -592,16 +596,15 @@ def create_up_down_plants(
                     carrier="Link ramp up",
                 ).to_dict(),
             )
-
             base_network.add(
                 "Link",
                 refining_link.index,
-                suffix=" ramp up",
+                suffix=" ramp down",
                 **refining_link.assign(
                     p_min_pu=-1,
                     p_max_pu=0,
                     carrier="Link ramp down",
-                    marginal_cost=-refining_link.marginal_cost,
+                    marginal_cost=refining_link.marginal_cost.item() * -1,
                 ).to_dict(),
             )
 
