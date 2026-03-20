@@ -421,7 +421,9 @@ def create_up_down_plants(
                 + co2_cost
             )
 
-            g_multilink["marginal_cost"] = new_marginal_cost
+            g_multilink.loc[new_marginal_cost.index, "marginal_cost"] = (
+                new_marginal_cost
+            )
 
             # Calculate marginal costs for up/down links with bid/offer multipliers applied
             prices_multilink = {}
@@ -435,10 +437,8 @@ def create_up_down_plants(
 
                 # Prices are static in this case, but for consistency we add them to the dynamic attribute
                 prices_time = pd.DataFrame(
-                    [prices_static.values],
-                    index=[network.snapshots[0]],
-                    columns=prices_static.index,
-                ).reindex(network.snapshots, method="ffill")
+                    index=network.snapshots,
+                ).assign(**prices_static.to_dict())
 
                 prices_multilink[direction] = prices_time
 
