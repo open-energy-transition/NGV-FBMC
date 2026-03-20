@@ -617,14 +617,12 @@ def create_up_down_plants(
                 "`bus1` in @gb_buses and `bus2` == 'co2 atmosphere'",
                 local_dict={"gb_buses": gb_buses},
             ).index
-            emission_gb = (
-                dispatch_result.c.links.dynamic.p0[idx]
-                * dispatch_result.c.links.static.loc[idx, "efficiency2"]
-            ).sum(axis="columns")
-            base_network.c.stores.dynamic.p_set.loc[:, "co2 atmosphere"] = (
-                -1
-            ) * emission_gb  # this is not working; need to set e_set instead below
-            base_network.c.stores.dynamic.e_set.loc[:, "co2 atmosphere"] = (-1) * (
+            emission_gb = (-1) * dispatch_result.c.links.dynamic.p2[idx].sum(
+                axis="columns"
+            )
+            # this is not working; need to set e_set instead below
+            base_network.c.stores.dynamic.p_set.loc[:, "co2 atmosphere"] = emission_gb
+            base_network.c.stores.dynamic.e_set.loc[:, "co2 atmosphere"] = (
                 base_network.c.stores.dynamic.p_set.loc[:, "co2 atmosphere"].mul(
                     base_network.snapshot_weightings["stores"], axis="index"
                 )
