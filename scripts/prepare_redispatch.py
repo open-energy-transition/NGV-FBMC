@@ -358,11 +358,11 @@ def create_up_down_plants(
 
             # Oil is more complicated to calculate
             oil_fuel_costs = (
-                # crude prices
+                # refining cost
                 network.c.links.static.query("`bus0`=='EU oil primary'")[
                     "marginal_cost"
                 ]
-                # refining cost
+                # crude prices
                 + (
                     network.c.generators.static.query("`bus`=='EU oil primary'")[
                         "marginal_cost"
