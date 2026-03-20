@@ -1127,7 +1127,7 @@ if __name__ == "__main__":
 
     fix_dispatch(network, dispatch_result, gb_buses)
 
-    create_up_down_plants(
+    network = create_up_down_plants(
         base_network=network,
         dispatch_result=dispatch_result,
         bids_and_offers=bids_and_offers,
