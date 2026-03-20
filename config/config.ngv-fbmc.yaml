@@ -211,7 +211,7 @@ time_aggregation:
   method: segment
   parameters:
     num_segments: 2190 # 4x smaller snapshots size
-    exclude_attrs: ["e_min_pu", "e_max_pu"] # Concern from GB model: demand-side flexibility implemented via store. Concern: Step changes could confuse the segmentation algorithm
+    exclude_attrs: [] # Concern from GB model: demand-side flexibility implemented via store. Concern: Step changes could confuse the segmentation algorithm
 
 solving:
   options:
