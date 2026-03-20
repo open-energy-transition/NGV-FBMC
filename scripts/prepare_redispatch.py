@@ -646,10 +646,11 @@ def create_up_down_plants(
                 carrier="Store ramp up",
                 p_min_pu=0,
                 p_max_pu=1,
-                p_nom=emission_gb.max(),
+                p_nom=np.inf,
                 p_nom_extendable=False,
                 efficiency=1,
                 marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
+                country="EU",
             )
             base_network.add(
                 "Generator",
@@ -658,10 +659,11 @@ def create_up_down_plants(
                 carrier="Store ramp down",
                 p_min_pu=-1,
                 p_max_pu=0,
-                p_nom=emission_gb.max(),
+                p_nom=np.inf,
                 p_nom_extendable=False,
                 efficiency=1,
                 marginal_cost=-0.01,  # Costs are already included in the multi-link marginal cost
+                country="EU",
             )
 
     return base_network
