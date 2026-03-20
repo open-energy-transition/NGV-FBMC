@@ -682,6 +682,7 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
         "EU waste",
         "EU solid biomass",
         "EU oil",
+        "EU oil primary",
         "EU uranium",
         "EU gas",
         "co2 atmosphere",
