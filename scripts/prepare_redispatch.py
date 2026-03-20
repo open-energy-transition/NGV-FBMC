@@ -864,9 +864,9 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
     network.components.generators.dynamic.p_min_pu.loc[
         :, new_ramp_down_limits.columns
     ] = new_ramp_down_limits
-    network.components.generators.dynamic.p_max_pu.loc[:, new_ramp_up_limits.columns] = (
-        new_ramp_up_limits
-    )
+    network.components.generators.dynamic.p_max_pu.loc[
+        :, new_ramp_up_limits.columns
+    ] = new_ramp_up_limits
 
     # Modify static df for cosmetics to represent switching of ramp up/down as well
     network.generators.loc[new_ramp_up_limits.columns, "p_min_pu"] = 0
