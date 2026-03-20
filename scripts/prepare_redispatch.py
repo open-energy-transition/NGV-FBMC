@@ -126,9 +126,10 @@ def _apply_multiplier(
     undefined_multipliers = set(df["carrier"].unique()) - (
         set(multiplier.keys()) | set(renewable_strike_prices.index)
     )
-    logger.warning(
-        f"Neither bid/offer multiplier nor strike price provided for the carriers: {undefined_multipliers}"
-    )
+    if undefined_multipliers:
+        logger.warning(
+            f"Neither bid/offer multiplier nor strike price provided for the carriers: {undefined_multipliers}"
+        )
 
     return new_marginal_costs
 
