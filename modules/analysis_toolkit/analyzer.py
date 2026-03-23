@@ -1,9 +1,15 @@
 import pypsa
 import pandas as pd
+import numpy as np
 
-from helpers.results_computer_base import ResultsComputerBase
-from helpers.results_computer_wrappers import metric
-#from helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf
+from typing import Literal
+
+from modules.analysis_toolkit.helpers.results_computer_base import ResultsComputerBase
+from modules.analysis_toolkit.helpers.results_computer_wrappers import metric
+from modules.analysis_toolkit.helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
+from modules.analysis_toolkit.helpers.config.filepaths import get_etys_boundaries_geopandas_fp
+from modules.analysis_toolkit.helpers.index_finder import IndexFinder, GeoOptions
+
 
 class ResultsComputer(ResultsComputerBase):
     """Compact results computer: expose metrics by decorating methods with @metric.
@@ -15,49 +21,129 @@ class ResultsComputer(ResultsComputerBase):
 
     Callers can use: res.revenue.iem(**kwargs), res.revenue.diff(), res.revenue.sq(), res.revenue(n, **kwargs)
     """
+
     def __init__(self, year: int):
         super().__init__(year=year)
 
+    def _get_gb_net_position(self, n: pypsa.Network):
+        net_position_gb = n.statistics.energy_balance(
+            bus_carrier=["AC"],
+            groupby_time=self.groupby_time,
+            groupby=self.groupby). \
+            drop(["DC"], level="carrier") \
+            .xs("GB", level="country")
+        assert np.allclose(net_position_gb.sum(axis=0), self._get_gb_interconnector_flows(n).sum(), atol=1), \
+            "Generation - demand in GB should be approximately equal to the net flow on the interconnectors (with a tolerance of 1 MW, to account for small numerical differences)."
+        return net_position_gb.sum(axis=0)
+
+    def _get_gb_interconnector_flows(self, n: pypsa.Network):
+        link_flows = n.statistics.transmission(
+            bus_carrier=["AC"],
+            components=["Link"],
+            groupby=self.groupby,
+            groupby_time=self.groupby_time
+        ).groupby("name").sum()
+        link_names = get_link_columns_in_ptdf(year=self.year)
+        assert set(link_names) == set(IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY)), \
+            "The list of links in the PTDF are different from those in the network. Please check the consistency of the data."
+        filter_links_in_ptdf = link_flows.index.get_level_values("name").isin(link_names)
+        # filter to only include links that contribute to the ptdf-based boundary loading
+        return link_flows[filter_links_in_ptdf]
+
+    def _boundary_flows_ptdf(self, n: pypsa.Network):
+        """Flows on the boundary lines, which is an approximation to the actual line loading."""
+        link_flows = self._get_gb_interconnector_flows(n=n)
+        ptdf = get_fb_constraints(year=self.year).set_index(["snapshot", "boundary", "direction"])
+        ptdf.columns.name = "name"
+        # contribution from link flows to the boundary loading, based on the ptdf values
+        boundary_flows = link_flows.T.mul(ptdf)
+        net_position_gb = self._get_gb_net_position(n=n)
+        # contribution from the net position of GB to the boundary loading, based on the ptdf values
+        boundary_flows["GB"] = net_position_gb.mul(ptdf["gb"])
+        # copy the maximum and initial flows
+        boundary_flows.loc[:, ["fmax", "f0"]] = ptdf.loc[:, ["fmax", "f0"]]
+        return boundary_flows.sort_index(level=["snapshot", "boundary", "direction"])
+
+    def _compute_net_boundary_flows_ptdf(self, n: pypsa.Network):
+        boundary_flows = self._boundary_flows_ptdf(n=n)
+        all_columns_except_fmax = boundary_flows.columns.difference(["fmax"])
+        net_boundary_flows = boundary_flows.loc[:, all_columns_except_fmax].sum(axis=1)
+        return net_boundary_flows
+
+    def _boundary_loading_ptdf(self, n: pypsa.Network):
+        """Flow-based loading of the boundary lines, which is an approximation to the actual line loading."""
+        boundary_flows = self._boundary_flows_ptdf(n=n)
+        net_boundary_flows = self._compute_net_boundary_flows_ptdf(n=n)
+        loading = net_boundary_flows.div(boundary_flows.loc[:, "fmax"])
+        # remove the negative loadings, only one direction per border is negative per timestamp
+        return loading.clip(lower=0)
+
+    def _boundary_flows_actual(self, n: pypsa.Network):
+        """Flows on the boundary lines, which is an approximation to the actual line loading."""
+        boundaries = Boundaries(network=n, year=self.year)
+        boundary_flows_dict = {}
+        for boundary_name, boundary in boundaries.items():
+            line_flows = n.lines_t.p0.loc[:, boundary.lines].apply(lambda col: col * dict(zip(boundary.lines, boundary.line_directions))[col.name], axis=0)
+            link_flows = n.links_t.p0.loc[:, boundary.links].apply(lambda col: col * dict(zip(boundary.links, boundary.link_directions))[col.name], axis=0)
+            line_flows = line_flows.sum(axis=1) if line_flows.ndim > 1 else line_flows
+            link_flows = link_flows.sum(axis=1) if link_flows.ndim > 1 else link_flows
+            boundary_flows_dict[(boundary_name, "DIRECT")] = line_flows + link_flows
+            boundary_flows_dict[(boundary_name, "OPPOSITE")] = - boundary_flows_dict[(boundary_name, "DIRECT")]
+        boundary_flows = pd.DataFrame(boundary_flows_dict, index=n.snapshots).T.stack()
+        boundary_flows = boundary_flows.rename_axis(index=["boundary", "direction", "snapshot"])
+        boundary_flows = boundary_flows.reorder_levels(["snapshot", "boundary", "direction"])
+        return boundary_flows.sort_index(level=["snapshot", "boundary", "direction"])
+
+    def _boundary_loading_actual(self, n: pypsa.Network):
+        """Actual loading of the boundary lines, based on the actual flows and the sum of the line capacities."""
+        boundaries = Boundaries(network=n, year=self.year)
+        boundary_flows = self._boundary_flows_actual(n=n)
+        capacity = boundary_flows.reset_index().apply(lambda row: boundaries[row["boundary"]].capacity, axis=1)
+        capacity.index = boundary_flows.index
+        loading = boundary_flows.div(capacity)
+        return loading.clip(lower=0)
+
     @metric
-    def consumer_surplus(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-
-    @metric
-    def congestion_income(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-
-    @metric
-    def border_flows(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
+    def boundary_flows(self, n: pypsa.Network, which: Literal["ptdf", "actual"], **kwargs):
+        if which == "ptdf":
+            return self._compute_net_boundary_flows_ptdf(n=n)
+        elif which == "actual":
+            return self._boundary_flows_actual(n=n)
+        else:
+            raise NotImplementedError
 
     @metric
-    def border_price_spreads(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
+    def boundary_loading(self, n: pypsa.Network, which: Literal["ptdf", "actual"], **kwargs):
+        if which == "ptdf":
+            return self._boundary_loading_ptdf(n=n)
+        elif which == "actual":
+            return self._boundary_loading_actual(n=n)
+        else:
+            raise NotImplementedError
 
     @metric
-    def co2_emissions(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
+    def boundary_congestion_count(self, n: pypsa.Network, which: Literal["ptdf", "actual"], **kwargs):
+        if which == "ptdf":
+            loading = self._boundary_loading_ptdf(n=n)
+        elif which == "actual":
+            loading = self._boundary_loading_actual(n=n)
+        else:
+            raise NotImplementedError
 
-    @metric
-    def share_of_renewables(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
-
-    @metric
-    def net_position(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
+        return (loading > 1).groupby(["boundary", "direction"]).sum()
 
     @metric(restricted_to= "redispatch")
     def constraint_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         # Constraint costs include both re-dispatch and counter-trading costs
         constraint_carriers = n.carriers.filter(
             regex=r" ramp (up|down)$", axis=0
-        ).index.tolist() + ["Load Shedding"]
+        ).index.tolist() + ["load"]
 
-        constraint_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier=constraint_carriers
-        )
+        constraint_costs = n.statistics.opex(  # todo: not working yet, we need to wait for the marginal cost of links from OET.
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=constraint_carriers,
+        ).query("not bus.str.contains('EU ')")
 
         return constraint_costs
 
@@ -68,8 +154,11 @@ class ResultsComputer(ResultsComputerBase):
         ).index.tolist()
 
         counter_trading_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier=counter_trading_carriers
-        )
+            comps=["Generator"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=counter_trading_carriers
+        ).query('not bus.str.contains("GB ") and carrier.str.contains("ramp")')
 
         return counter_trading_costs
 
@@ -77,19 +166,25 @@ class ResultsComputer(ResultsComputerBase):
     @metric(restricted_to= "redispatch")
     def redispatch_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         redispatch_carriers = n.carriers.filter(
-            regex=r"(Generator|StorageUnit) ramp (up|down)$", axis=0
+            regex=r"(Generator|Link|StorageUnit) ramp (up|down)$", axis=0
         ).index.tolist()
 
         redispatch_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier=redispatch_carriers
-        )
+            comps=["Generator", "Link", "StorageUnit"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers
+        ).query('country=="GB" and bus!="GBNI" and carrier.str.contains("ramp")')
 
         return redispatch_costs
 
     @metric(restricted_to= "redispatch")
     def load_shedding_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
         load_shedding_costs = n.statistics.opex(
-            comps="Generator", groupby_time = False, groupby= ["name", "carrier", "bus"], carrier="Load Shedding"
+            comps=["Generator"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier="load"
         )
 
         return load_shedding_costs
@@ -109,7 +204,7 @@ class ResultsComputer(ResultsComputerBase):
         return consumer_cost
 
     @metric(restricted_to= "dispatch")
-    def producer_costs(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
+    def producer_costs_in_gb(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
         """
         The method returns a disaggregated data frame with the time series of the producer cost per component (for GB only).
         Producer cost = fuel cost + co2 cost + opex (vom). The first two are extracted with the revenue command.
@@ -139,7 +234,7 @@ class ResultsComputer(ResultsComputerBase):
         return producer_costs
 
     @metric(restricted_to= "dispatch")
-    def producer_surplus(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
+    def producer_surplus_in_gb(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
         """
         The method returns a disaggregated data frame with the time series of the producer cost per component (for GB only).
         Producer surplus = electricity revenue -  fuel cost - co2 cost - opex (vom). The net sum of the first 3 are extracted with the revenue command.
@@ -168,7 +263,7 @@ class ResultsComputer(ResultsComputerBase):
         return producer_surplus
 
     @metric(restricted_to="dispatch")
-    def storage_surplus(self, n: pypsa.Network, **kwargs):  # To be used in the Dispatch model only
+    def storage_surplus_in_gb(self, n: pypsa.Network, **kwargs):  # To be used in the Dispatch model only
         """
         The method returns a disaggregated data frame with the time series of the storage surplus per component (for GB only).
         Storage surplus = electricity cashflow - opex (vom).
@@ -193,8 +288,70 @@ class ResultsComputer(ResultsComputerBase):
         storage_surplus = cashflow_of_storage_units.sub(opex_of_storage_units, fill_value=0)
         return storage_surplus
 
+    @metric
+    def interconnector_flows(self, n: pypsa.Network):
+         return self._get_gb_interconnector_flows(n=n)
+
+    @metric
+    def net_position_gb(self, n: pypsa.Network):
+        return self._get_gb_net_position(n=n)
+
+    @metric(restricted_to="dispatch")
+    def congestion_income(self, n: pypsa.Network, **kwargs):
+        """
+        The method returns a disaggregated data frame with the time series of the congestion income per interconnector (for GB only).
+        Congestion income = flow on interconnector * price difference between the two sides of the interconnector.
+        """
+        link_names = IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY)
+        congestion_income = n.statistics.revenue(
+            bus_carrier=["AC", "AC_OH"],
+            groupby_time=False,
+            carrier=["DC", "DC_OH"],
+            groupby=["name"]
+        ).query('name in @link_names').droplevel("component")
+        return congestion_income
+
+    def restricted_capacity(self):
+        return self.interconnector_flows.iem_dispatch() - self.interconnector_flows.iem_fb_dispatch()
+
+    def lost_congestion_income(self):
+        return self.congestion_income.iem_dispatch() - self.congestion_income.iem_fb_dispatch()
+
+    # TODO: the following metrics are optional, but they can help find patterns and correlations in the results.
+    #  We can decide later whether they are worth implementing or not.
+    @metric(restricted_to="dispatch")
+    def renewable_dispatch(self):
+        # [optional] renewable production in MW that can help find patterns and correlations
+        return NotImplementedError
+
+    @metric(restricted_to="dispatch")
+    def consumption(self):
+        # [optional] consumption in MW that can help find patterns and correlations
+        return NotImplementedError
+
+    @metric(restricted_to="redispatch")
+    def renewable_redispatch(self):
+        # [optional] ramped up and down renewable production in MW that can help find patterns and correlations
+        return NotImplementedError
+
+    @metric(restricted_to="redispatch")
+    def redispatched_volume(self):
+        # [optional] total volume of ramp up and ramp down redispatch
+        return NotImplementedError
+
+    @metric(restricted_to="redispatch")
+    def countertraded_volume(self):
+        # [optional] total volume of ramp up and ramp down counter-trading
+        return NotImplementedError
+
 
 if __name__ == "__main__":
     rc = ResultsComputer(year=2030)
-    rc.redispatch_costs.iem_redispatch()
+    # rc.constraint_costs.iem_redispatch()
+    rc.congestion_income.compare_dispatch()
     print()
+
+    # query where any of the strings in a list are contained in a column
+    # n = rc.ns.iem_redispatch()
+    # ic_names = IndexFinder.get_interconnectors(n)
+    # rc.opex.iem_redispatch().query('index.str.contains("|".join(@ic_names))')

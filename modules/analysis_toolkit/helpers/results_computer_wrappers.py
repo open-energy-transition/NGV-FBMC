@@ -1,5 +1,6 @@
 from typing import Callable, Any, Optional, Dict, Literal
 import pypsa
+import pandas as pd
 from functools import wraps
 
 
