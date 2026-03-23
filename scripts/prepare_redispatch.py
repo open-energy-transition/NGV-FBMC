@@ -962,6 +962,17 @@ def cleanup_fuel_components(
     network.add("Generator", oil_gen.index, **oil_gen.to_dict())
     network.add("Link", oil_refining.index, **oil_refining.to_dict())
 
+    # There is an insignificant amount of CCS possible in the model
+    # which adds a lot of complexity; instead of trying to keep it,
+    # we remove the associated components
+    cnames = [
+        "EU solid biomass biomass to liquid CC-2030",
+        "EU solid biomass biomass to liquid CC-2040",
+    ]
+    for cname in cnames:
+        if cname in network.c.links.static.index:
+            network.remove("Link", cname)
+
     return network
 
 
@@ -1152,7 +1163,7 @@ if __name__ == "__main__":
         copperplate_gb(network)
 
     # Never hurts
-    network.consistency_check(strict=None)
+    network.consistency_check(strict="all")
 
     network.name = f"{snakemake.wildcards.scenario} ({snakemake.wildcards.planning_horizons}) - redispatch"
 
