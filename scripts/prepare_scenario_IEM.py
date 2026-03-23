@@ -707,19 +707,6 @@ if __name__ == "__main__":
     )
     n_merged.links.loc[n_merged.links.index.str.match("GBNI"), "country"] = "GBNI"
 
-    # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
-    # considered to be above p_max_pu; manually fix this:
-    cnames = ["ES00 nuclear-2030"]
-    for cname in cnames:
-        logger.info(f"Patching {cname}: Set p_min_pu <= p_max_pu")
-        snapshot_idx = (
-            n_merged.c.links.dynamic.p_min_pu[cname]
-            > n_merged.c.links.dynamic.p_max_pu[cname]
-        )
-        n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, cname] = (
-            n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, cname]
-        )
-
     # Cluster the network by time
     # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
     # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
@@ -728,6 +715,20 @@ if __name__ == "__main__":
     # By clustering before, we avoid this potential issue
     if snakemake.params.time_aggregation["enable"]:
         n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
+
+    # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
+    # considered to be above p_max_pu; manually fix this:
+    cnames = ["ES00 nuclear-2030"]
+    for cname in cnames:
+        if cname in n_merged.c.links.static.index:
+            logger.info(f"Patching {cname}: Set p_min_pu <= p_max_pu")
+            snapshot_idx = (
+                n_merged.c.links.dynamic.p_min_pu[cname]
+                > n_merged.c.links.dynamic.p_max_pu[cname]
+            )
+            n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, cname] = (
+                n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, cname]
+            )
 
     # Never hurts
     n_merged.consistency_check(strict="all")
