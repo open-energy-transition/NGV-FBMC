@@ -407,9 +407,9 @@ def create_up_down_plants(
 
             co2_cost = (-1) * (
                 g_multilink["bus2"].map(
-                    dispatch_result.components["Store"].static.set_index("bus")[
-                        "marginal_cost"
-                    ]
+                    dispatch_result.components["Store"]
+                    .static.loc[["co2 atmosphere"]]
+                    .set_index("bus")["marginal_cost"]
                 )
                 * g_multilink["efficiency2"]
             )
