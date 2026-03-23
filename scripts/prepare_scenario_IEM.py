@@ -661,14 +661,16 @@ if __name__ == "__main__":
 
     # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
     # considered to be above p_max_pu; manually fix this:
-    logger.info("Patching ES00 nuclear-2030: Set p_min_pu <= p_max_pu")
-    snapshot_idx = (
-        n_merged.c.links.dynamic.p_min_pu["ES00 nuclear-2030"]
-        > n_merged.c.links.dynamic.p_max_pu["ES00 nuclear-2030"]
-    )
-    n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, "ES00 nuclear-2030"] = (
-        n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, "ES00 nuclear-2030"]
-    )
+    cnames = ["ES00 nuclear-2030"]
+    for cname in cnames:
+        logger.info(f"Patching {cname}: Set p_min_pu <= p_max_pu")
+        snapshot_idx = (
+            n_merged.c.links.dynamic.p_min_pu[cname]
+            > n_merged.c.links.dynamic.p_max_pu[cname]
+        )
+        n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, cname] = (
+            n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, cname]
+        )
 
     # Never hurts
     n_merged.consistency_check(strict="all")
