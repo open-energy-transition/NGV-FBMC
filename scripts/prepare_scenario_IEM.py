@@ -722,8 +722,19 @@ if __name__ == "__main__":
     )
     n_merged.links.loc[n_merged.links.index.str.match("GBNI"), "country"] = "GBNI"
 
+    # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
+    # considered to be above p_max_pu; manually fix this:
+    logger.info("Patching ES00 nuclear-2030: Set p_min_pu <= p_max_pu")
+    snapshot_idx = (
+        n_merged.c.links.dynamic.p_min_pu["ES00 nuclear-2030"]
+        > n_merged.c.links.dynamic.p_max_pu["ES00 nuclear-2030"]
+    )
+    n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, "ES00 nuclear-2030"] = (
+        n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, "ES00 nuclear-2030"]
+    )
+
     # Never hurts
-    n_merged.consistency_check(strict=None)
+    n_merged.consistency_check(strict="all")
 
     # Give the new network a proper name
     n_merged.name = (
