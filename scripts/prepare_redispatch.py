@@ -437,8 +437,10 @@ def create_up_down_plants(
 
                 # Prices are static in this case, but for consistency we add them to the dynamic attribute
                 prices_time = pd.DataFrame(
+                    np.repeat([prices_static.values], len(network.snapshots), axis=0),
                     index=network.snapshots,
-                ).assign(**prices_static.to_dict())
+                    columns=prices_static.index,
+                )
 
                 prices_multilink[direction] = prices_time
 
