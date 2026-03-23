@@ -694,21 +694,6 @@ if __name__ == "__main__":
     # and on the merged network again
     n_merged = reset_network(n_merged)
 
-    # Reorder line directions
-    n_merged = reorder_line_directions(
-        n=n_merged,
-        manual_boundaries_fp=snakemake.input.external_boundary_definitions,
-    )
-
-    # Cluster the network by time
-    # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
-    # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
-    # If we cluster later during solve_network, the clustering might yield different results due to
-    # different time-series in the scenarios.
-    # By clustering before, we avoid this potential issue
-    if snakemake.params.time_aggregation["enable"]:
-        n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
-
     # Make it easier for downstream rules to identify GB buses and components by assigning a country attribute
     n_merged.buses.loc[n_merged.buses.index.str.match(r"GB\s+"), "country"] = "GB"
     n_merged.generators.loc[
@@ -724,14 +709,25 @@ if __name__ == "__main__":
 
     # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
     # considered to be above p_max_pu; manually fix this:
-    logger.info("Patching ES00 nuclear-2030: Set p_min_pu <= p_max_pu")
-    snapshot_idx = (
-        n_merged.c.links.dynamic.p_min_pu["ES00 nuclear-2030"]
-        > n_merged.c.links.dynamic.p_max_pu["ES00 nuclear-2030"]
-    )
-    n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, "ES00 nuclear-2030"] = (
-        n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, "ES00 nuclear-2030"]
-    )
+    cnames = ["ES00 nuclear-2030"]
+    for cname in cnames:
+        logger.info(f"Patching {cname}: Set p_min_pu <= p_max_pu")
+        snapshot_idx = (
+            n_merged.c.links.dynamic.p_min_pu[cname]
+            > n_merged.c.links.dynamic.p_max_pu[cname]
+        )
+        n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, cname] = (
+            n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, cname]
+        )
+
+    # Cluster the network by time
+    # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
+    # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
+    # If we cluster later during solve_network, the clustering might yield different results due to
+    # different time-series in the scenarios.
+    # By clustering before, we avoid this potential issue
+    if snakemake.params.time_aggregation["enable"]:
+        n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
 
     # Never hurts
     n_merged.consistency_check(strict="all")
