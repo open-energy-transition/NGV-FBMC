@@ -615,6 +615,11 @@ def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
     n.c.generators.static.loc[idx, "p_nom"] = np.inf
     n.c.generators.static.loc[idx, "p_nom_extendable"] = False
 
+    stores_idx = n.c.stores.static.query(
+        "`bus` in @fuel_buses", local_dict={"fuel_buses": idx}
+    ).index
+    n.remove("Store", stores_idx)
+
     return n
 
 
