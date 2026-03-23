@@ -661,7 +661,7 @@ if __name__ == "__main__":
 
     # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
     # considered to be above p_max_pu; manually fix this:
-    cnames = ["ES00 nuclear-2030"]
+    cnames = ["ES00 nuclear-2030", "HU00 nuclear-2040"]
     for cname in cnames:
         if cname in n_merged.c.links.static.index:
             logger.info(f"Patching {cname}: Set p_min_pu <= p_max_pu")
