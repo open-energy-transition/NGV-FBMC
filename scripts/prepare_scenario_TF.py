@@ -124,7 +124,7 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             continue
 
         static_elements = [col for col in cols if "off-grid electrolysis" in col]
-        dynamic_elements = [col for col in cols if not "off-grid electrolysis" in col]
+        dynamic_elements = [col for col in cols if "off-grid electrolysis" not in col]
 
         if dynamic_elements:
             logger.info(
@@ -139,15 +139,18 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             )
 
             # Errors may cause values below 0 which is unrealistic, so clip accordingly
-            # We could also clip > 1, but then we need to differentiate between
-            # loads (absolute timeseries) and generators (pu timeseries)
+            # We also clip > 1 for generators only, as loads time-series is not pu, i.e. must not be clipped
             new_p = new_p.clip(lower=0)  # , upper=max_value)
+            if component_type == "generators":
+                new_p = new_p.clip(upper=1)
 
             # Assign the new values back to the generators dataframe
             # (this propagates to the network object n because it is a reference, not a copy)
             # Make sure to align snapshots first
             new_p = new_p.loc[comp.index]
-            comp[dynamic_elements] = new_p
+            n.components[component_type].dynamic[p_col].loc[
+                new_p.index, new_p.columns
+            ] = new_p
 
         if static_elements:
             # Transform baseload demand for offgrid electrolysis into-time-dependent demand
@@ -166,9 +169,10 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             )
 
             # Errors may cause values below 0 which is unrealistic, so clip accordingly
-            # We could also clip > 1, but then we need to differentiate between
-            # loads (absolute timeseries) and generators (pu timeseries)
-            new_p = new_p.clip(lower=0)  # , upper=max_value)
+            # We also clip > 1, but only for generators, as loads time-series is not pu, i.e. must not be clipped
+            new_p = new_p.clip(lower=0)
+            if component_type == "generators":
+                new_p = new_p.clip(upper=1)
 
             # Assign the new values back to the generators dataframe
             # (this propagates to the network object n because it is a reference, not a copy)
