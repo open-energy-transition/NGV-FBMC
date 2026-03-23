@@ -22,17 +22,11 @@ class ResultsComputer(ResultsComputerBase):
     def consumer_surplus(self, n: pypsa.Network, **kwargs):
         return NotImplementedError()
 
-    @metric
-    def producer_surplus(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
 
     @metric
     def congestion_income(self, n: pypsa.Network, **kwargs):
         return NotImplementedError()
 
-    @metric
-    def storage_surplus(self, n: pypsa.Network, **kwargs):
-        return NotImplementedError()
 
     @metric
     def border_flows(self, n: pypsa.Network, **kwargs):
