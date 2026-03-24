@@ -117,13 +117,28 @@ def _apply_multiplier(
     direction: Literal["bid", "offer"]
         Direction of the multiplier, either "bid" or "offer"
     """
-    new_marginal_costs = (
-        (df["carrier"].map(renewable_strike_prices) - df["marginal_cost"])
-        # if strike price is lower than marginal cost, then we apply zero charge for bids/offers
-        .clip(lower=0)
-        .mul(-1 if direction == "bid" else 1)
-        .fillna(df["marginal_cost"] * df["carrier"].map(multiplier).fillna(1))
+    # For renewables with CfD contracts: cost = max(strike_price - marginal_cost, 0)
+    # Negative difference (strike < marginal) is clipped to zero
+    # (if strike price is lower than the marginal cost of the plant, then we charge 0 for the bids or offers)
+    surplus = (df["carrier"].map(renewable_strike_prices) - df["marginal_cost"]).clip(
+        lower=0
     )
+
+    # Bids are negative (cost of reducing dispatch for renewables), offers are positive
+    # Only applies to renewables with CfD contracts, regular assets ramp down (bids) can reduce the system costs,
+    # i.e. their bid prices are positive
+    if direction == "bid":
+        surplus *= -1
+    elif direction == "offer":
+        surplus *= 1
+
+    # For conventional generators (=no renewable strike price):
+    # scale marginal cost by bid/offer multiplier
+    conventional_costs = df["marginal_cost"] * df["carrier"].map(multiplier).fillna(1)
+
+    # Use renewable CfD cost where available, fall back to conventional cost
+    new_marginal_costs = surplus.fillna(conventional_costs)
+
     assert not (isna := new_marginal_costs.isna()).any(), (
         f"Some marginal costs are NaN after applying multipliers and strike prices: {new_marginal_costs[isna].index.tolist()}"
     )
