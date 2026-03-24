@@ -622,7 +622,8 @@ def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
 
     # Negligible contributions -> model simplification by removing these components
     idx = n.c.links.static.query(
-        "`index`.str.contains('EU solid biomass biomass to liquid CC')"
+        "`index`.str.contains('EU solid biomass biomass to liquid CC') or "
+        "`index`.str.contains('EU solid biomass biogas to liquid-2040')"
     ).index
     if len(idx) > 0:
         logger.info(f"Removing links as model simplification: {idx}")
