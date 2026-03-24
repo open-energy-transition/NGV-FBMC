@@ -128,7 +128,7 @@ def _apply_multiplier(
     )
     if undefined_multipliers:
         logger.warning(
-            f"Neither bid/offer multiplier nor strike price provided for the carriers: {undefined_multipliers}"
+            f"Neither bid/offer multiplier nor strike price provided for the carriers: {sorted(undefined_multipliers)}"
         )
 
     return new_marginal_costs
