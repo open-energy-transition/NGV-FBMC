@@ -974,26 +974,45 @@ def cleanup_fuel_components(
         ]
     )
 
-    # Fix oil links and generators missing
-    oil_gen = dispatch_result.generators.query("`bus`.str.contains('EU oil')")
-    oil_buses = dispatch_result.buses.query("`name`.str.contains('EU oil')")
-    oil_refining = dispatch_result.links.query(
-        "`bus0` == 'EU oil primary' and `bus1` == 'EU oil'"
-    )
-    network.add("Bus", oil_buses.index, **oil_buses.to_dict())
-    network.add("Generator", oil_gen.index, **oil_gen.to_dict())
-    network.add("Link", oil_refining.index, **oil_refining.to_dict())
-
-    # There is an insignificant amount of CCS possible in the model
-    # which adds a lot of complexity; instead of trying to keep it,
-    # we remove the associated components
-    cnames = [
-        "EU solid biomass biomass to liquid CC-2030",
-        "EU solid biomass biomass to liquid CC-2040",
-    ]
-    for cname in cnames:
-        if cname in network.c.links.static.index:
-            network.remove("Link", cname)
+    # Remove components from the network:
+    # * Related to EU solid biomass:
+    #   There is an insignificant amount of CCS possible in the model
+    #   which adds a lot of complexity; instead of trying to keep it,
+    #   we remove the associated components
+    #
+    # * Related to EU oil:
+    #   In the redispatch model with focus on GB, there is no oil consumption
+    #   and we can therefore remove any component associated with oil from the model
+    comps = {
+        "Link": [
+            "EU solid biomass biomass to liquid CC-2030",
+            "EU solid biomass biomass to liquid CC-2040",
+            "EU solid biomass biomass to liquid-2030",
+            "EU solid biomass biomass to liquid-2040",
+            "EU oil refining",
+            "EU oil refining ramp up",
+            "EU oil refining ramp down",
+        ],
+        "Bus": [
+            "EU oil",
+            "EU oil primary",
+        ],
+        "Generator": [
+            "EU oil primary",
+            "EU oil primary ramp up",
+            "EU oil primary ramp down",
+        ],
+        "Store": ["EU oil Store"],
+    }
+    for ctype, cnames in comps.items():
+        idx = list(
+            network.components[ctype]
+            .static.query("`index` == @cnames", local_dict={"cnames": cnames})
+            .index
+        )
+        if len(idx) > 0:
+            logger.info(f"Removing {ctype} components with indices {idx}.")
+            network.remove(ctype, idx)
 
     return network
 
