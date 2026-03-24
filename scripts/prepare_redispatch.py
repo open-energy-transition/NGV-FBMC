@@ -741,12 +741,15 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
     # Manual cleanup for some that are not easy to catch
     cleanup_components = {"Load": ["EU solid biomass final energy demand"]}
     for comp in network.components[list(cleanup_components.keys())]:
-        network.remove(
-            comp.name,
-            comp.static.query(
-                "index in @comps", local_dict={"comps": cleanup_components[comp.name]}
-            ).index,
-        )
+        idx = comp.static.query(
+            "index in @comps", local_dict={"comps": cleanup_components[comp.name]}
+        ).index
+        if len(idx) > 0:
+            network.remove(
+                comp.name,
+                idx,
+            )
+            logger.info(f"Manually cleaned up {comp.name} with index {idx.tolist()}")
 
     logger.info(
         f"Dropped generators, storage units, links and loads connected to {eur_buses} from the network"
@@ -804,9 +807,9 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
     )
 
     # Remove the original dispatch constraints on the interconnectors, as they are now represented by the generators on the non-GB side
-    network.c.links.dynamic.p_set = network.c.links.dynamic.p_set.drop(
-        columns=interconnectors.index
-    )
+    idx = interconnectors.index.intersection(network.c.links.dynamic.p_set.columns)
+    if idx.any():
+        network.c.links.dynamic.p_set = network.c.links.dynamic.p_set.drop(columns=idx)
 
     logger.info(f"Added {len(buses)} buses for the endpoints of all interconnectors")
 
@@ -1143,7 +1146,9 @@ if __name__ == "__main__":
     # Select GB buses
     gb_buses = network.buses.query("country == 'GB'").index
 
-    fix_dispatch(network, dispatch_result, gb_buses)
+    network = fix_dispatch(
+        base_network=network, dispatch_result=dispatch_result, gb_buses=gb_buses
+    )
 
     network = create_up_down_plants(
         base_network=network,
