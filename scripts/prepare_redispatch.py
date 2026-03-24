@@ -546,7 +546,7 @@ def create_up_down_plants(
                 p_nom=p_nom,
                 p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
-                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
+                marginal_cost=0.1,  # Costs are already included in the multi-link marginal cost
             )
 
             base_network.add(
@@ -560,7 +560,7 @@ def create_up_down_plants(
                 p_nom=p_nom,
                 p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
-                marginal_cost=-0.01,  # Costs are already included in the multi-link marginal cost
+                marginal_cost=0.1,  # Costs are already included in the multi-link marginal cost
             )
 
             # Manually insert oil generator:
@@ -582,7 +582,7 @@ def create_up_down_plants(
                 p_nom_extendable=oil_generator.p_nom_extendable,
                 efficiency=oil_generator.efficiency,
                 capital_cost=0,
-                marginal_cost=0.01,
+                marginal_cost=0.1,
             )
 
             base_network.add(
@@ -597,7 +597,7 @@ def create_up_down_plants(
                 p_nom_extendable=oil_generator.p_nom_extendable,
                 efficiency=oil_generator.efficiency,
                 capital_cost=0,
-                marginal_cost=-0.01,
+                marginal_cost=0.1,
             )
 
             refining_link = dispatch_result.c.links.static.query(
@@ -626,7 +626,6 @@ def create_up_down_plants(
                     p_min_pu=-1,
                     p_max_pu=0,
                     carrier="Link ramp down",
-                    marginal_cost=refining_link.marginal_cost.item() * -1,
                 ).to_dict(),
             )
 
@@ -672,7 +671,7 @@ def create_up_down_plants(
                 p_nom=np.inf,
                 p_nom_extendable=False,
                 efficiency=1,
-                marginal_cost=0.01,  # Costs are already included in the multi-link marginal cost
+                marginal_cost=0.1,  # Costs are already included in the multi-link marginal cost
                 country="EU",
             )
             base_network.add(
@@ -685,7 +684,7 @@ def create_up_down_plants(
                 p_nom=np.inf,
                 p_nom_extendable=False,
                 efficiency=1,
-                marginal_cost=-0.01,  # Costs are already included in the multi-link marginal cost
+                marginal_cost=0.1,  # Costs are already included in the multi-link marginal cost
                 country="EU",
             )
 
