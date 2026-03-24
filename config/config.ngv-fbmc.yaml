@@ -18,6 +18,8 @@ redispatch:
   - geothermal # No bid/offer multiplier and negligible capacity, so no redispatch for simplicity
   - co2 sequestered
   - electricity distribution grid # Loads are connected through this carrier; no redispatch on the links connecting the loads
+  - biomass to liquid
+  - biogas to gas
   # Lack of guidance and clarity on redispatch about the following carriers and components
   # therefore do not fix their dispatch and allow them to freely redispatch
   - battery charger
