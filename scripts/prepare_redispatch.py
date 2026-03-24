@@ -63,33 +63,38 @@ def fix_dispatch(
             continue
 
         elif comp.name == "Link":
-            # Do not fix the dispatch for intra-GB links
-            # (this applies to DC links, but also to e.g. DSR links;
-            # multi-links that generate electricity are not captured by this,
-            # because their bus0 is a non-GB , global fuel bus)
-            intra_gb_links = comp.static.query(
-                "`bus0` in @gb_buses and `bus1` in @gb_buses and `carrier` in @carriers",
+            # The GBDM fixes the dispatch only for the interconnector links, but the model
+            # also only uses Link components for interconnectors.
+            # Our modified model uses Link components also for other technologies like OCGTs.
+            # We need to fix the dispatch for these technologies, but not for interconnectors,
+            # as interconnectors are modelled with free-to-dispatch limits and a dispatch + ramp up + down generator
+            # We filter by all links that have bus1 in GB and are part of the relevant carriers
+            # The carriers below are selected based on:
+            # * are they nuclear? (fixed, but not redispatched, different reimbursement scheme)
+            # * are they part of the GBDM model (fixed) or from the openTYNDP (not fixed)
+            # * if they are redispatched (fixed) or not (not fixed)
+            # * are they linked to a storage technology like H2 which is free to redispatch? (not fixed)
+            idx = comp.static.query(
+                "`bus1` in @gb_buses and `carrier` in @carriers",
                 local_dict={
                     "gb_buses": gb_buses,
                     "carriers": [
-                        "DC",
-                        "battery charger",
-                        "battery discharger",
-                        "home battery charger",
-                        "home battery discharger",
-                        "H2 electrolysis",
-                        "h2-ccgt",
+                        "gas-ccgt",
+                        "nuclear",
+                        "oil refining",
+                        "solid biomass",
+                        "waste",
                     ],
                 },
             ).index
 
-            other_links = comp.static.index.difference(intra_gb_links)
-
-            p_fix = comp.dynamic.p0.loc[:, other_links]
+            p_fix = comp.dynamic.p0.loc[:, idx]
 
         base_network.components[comp.name].dynamic.p_set.loc[:, p_fix.columns] = p_fix
 
         logger.info(f"Fixed the dispatch of {comp.name}")
+
+    return base_network
 
 
 def _apply_multiplier(
