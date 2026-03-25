@@ -632,6 +632,36 @@ def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def adjust_gb_biomass_costs(n: pypsa.Network) -> pypsa.Network:
+    """
+    Adjusts the costs for biomass generators in GB to match the assumptions in the TYNDP model.
+
+    The costs from transforming the biomass Generator-components to Link-components
+    preserves the marginal_costs. However, as the generators are attached to the model
+    wide EU solid biomass bus, the fuel costs need to be reduced to avoid double counting
+    of fuel costs for biomass in GB in the model.
+
+    The costs are set to a small value, whilst the fuel costs are now accounted for through
+    the EU solid biomass bus.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the biomass generator costs should be adjusted.
+    """
+
+    # Biomass generators to be affected
+    idx = n.c.links.static.query(
+        "carrier == 'solid biomass' and bus1.str.startswith('GB ')"
+    ).index
+
+    logger.info(f"Adjusting costs for GB biomass generators: {idx}")
+
+    n.c.links.static.loc[idx, "marginal_cost"] = 0.1
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -697,6 +727,8 @@ if __name__ == "__main__":
     n_merged = remove_unused_carriers(n_merged)
 
     n_merged = patch_EU_fuel_generators(n_merged)
+
+    n_merged = adjust_gb_biomass_costs(n_merged)
 
     # After merging we get rid of all attributes that are potential outputs from the model
     # Due to https://github.com/PyPSA/PyPSA/issues/1606 we do this on the individual networks before the merge
