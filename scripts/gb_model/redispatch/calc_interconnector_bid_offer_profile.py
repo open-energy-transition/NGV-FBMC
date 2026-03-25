@@ -109,9 +109,6 @@ def get_eur_marginal_generator(
 
     bid_multiplier = bids_and_offers_multipliers["bid_multiplier"]
     offer_multiplier = bids_and_offers_multipliers["offer_multiplier"]
-    eur_buses = unconstrained_result.buses.query(
-        "country != 'GB' and carrier == 'AC'"
-    ).index
 
     # Function to identify marginal carrier
     def _identify_marginal_carrier(electricity_price, marginal_price_range):
@@ -161,20 +158,38 @@ def get_eur_marginal_generator(
         else:
             # Row where marginal electricity price is within generator marginal price range
             marginal_carrier_row = marginal_carrier_rows.iloc[0]
+
+        # Anchor multiplier application to the selected carrier band to avoid scarcity-price amplification.
+        reference_price = float(
+            np.clip(
+                electricity_price,
+                marginal_carrier_row["min"],
+                marginal_carrier_row["max"],
+            )
+        )
         # Get the marginal carrier name
         marginal_carrier = marginal_carrier_row.name
         if marginal_carrier in bid_multiplier.keys():
-            bid_cost = electricity_price * bid_multiplier[marginal_carrier]
-            offer_cost = electricity_price * offer_multiplier[marginal_carrier]
+            bid_cost = reference_price * bid_multiplier[marginal_carrier]
+            offer_cost = reference_price * offer_multiplier[marginal_carrier]
         else:
-            bid_cost = offer_cost = electricity_price
+            bid_cost = offer_cost = reference_price
 
         return bid_cost, offer_cost
 
     for bus in gb_neighbours:
-        generator_marginal_prices = pd.concat(
-            [marginal_costs_bus(b, unconstrained_result) for b in eur_buses]
-        )
+        # Use the local EUR bus stack first so each interconnector endpoint is priced from local technologies.
+        generator_marginal_prices = marginal_costs_bus(bus, unconstrained_result)
+
+        # Fallback for buses where no local marginal-cost stack is available.
+        if generator_marginal_prices.empty:
+            # Fallback keeps behavior robust for sparse buses with no local dispatchable stack.
+            eur_buses = unconstrained_result.buses.query(
+                "country != 'GB' and carrier == 'AC'"
+            ).index
+            generator_marginal_prices = pd.concat(
+                [marginal_costs_bus(b, unconstrained_result) for b in eur_buses]
+            )
 
         # Price range of each carrier in EUR (min and max values)
         marginal_price_range = (
@@ -219,16 +234,17 @@ def calculate_interconnector_loss(
     for bus in interconnector_grouping.index:
         group = interconnector_grouping.loc[bus]
         # Capacity weighted average of interconnectors connected to each eur node
+        p0_abs = unconstrained_result.links_t.p0[group].abs()
+        p1_abs = unconstrained_result.links_t.p1[group].abs()
+        # Convert absolute MW losses to a dimensionless fraction for later (1 +/- loss) terms.
+        loss_fraction = (
+            (p0_abs - p1_abs).clip(lower=0).div(p0_abs.replace(0, np.nan)).fillna(0)
+        )
         loss_profile[bus] = (
-            (
-                unconstrained_result.links_t.p1[group]
-                - unconstrained_result.links_t.p0[group] * -1
-            )
-            .abs()  # interconnector loss between GB and eur node
-            .mul(interconnectors.loc[group].p_nom)
+            loss_fraction.mul(interconnectors.loc[group].p_nom)
             .sum(axis=1)
             .div(interconnectors.loc[group].p_nom.sum())
-        )
+        ).clip(lower=0, upper=1)
 
     if loss_profile.isna().any().any():
         logger.info(
@@ -306,6 +322,7 @@ def assign_bid_offer(
     unconstrained_result: pypsa.Network,
     interconnectors: pd.DataFrame,
     profiles: pd.DataFrame,
+    float_flow_atol_mw: float = 1e-3,
 ) -> pd.DataFrame:
     """
     Calculate bid/offer for each interconnector based on the status of the interconnector at each time step
@@ -318,13 +335,16 @@ def assign_bid_offer(
         List of interconnectors between EU and GB
     profiles: pd.DataFrame
         six different bid/offer profiles for each interconnector that can be assigned to it based on it's status
+    float_flow_atol_mw: float
+        Tolerance for considering an interconnector as floating (default: 1e-3 MW)
     """
 
     gb_power = unconstrained_result.links_t.p0[interconnectors.index]
+    # Treat tiny residual flows as floating to avoid unstable branch switching from solver noise.
     conditions = [
-        gb_power < 0,  # interconnector importing
-        gb_power == 0,  # interconnector float
-        gb_power > 0,  # interconnector exporting
+        gb_power < -float_flow_atol_mw,  # interconnector importing
+        np.isclose(gb_power, 0.0, atol=float_flow_atol_mw),  # interconnector float
+        gb_power > float_flow_atol_mw,  # interconnector exporting
     ]
 
     def _filter_profiles(df, key):
@@ -426,7 +446,7 @@ if __name__ == "__main__":
         from scripts._helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            Path(__file__).stem, scenario="SQ", planning_horizons="2030"
+            Path(__file__).stem, scenario="IEM", planning_horizons="2030"
         )
 
     configure_logging(snakemake)

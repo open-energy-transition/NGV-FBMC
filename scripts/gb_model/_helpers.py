@@ -218,8 +218,8 @@ def marginal_costs_bus(bus: str, network: pypsa.Network) -> pd.DataFrame:
         pypsa model to be finalized
     """
 
-    # exclude_carriers = ["load"]
-    exclude_carriers = []
+    # Exclude demand-shedding pseudo-generators so they do not appear as the marginal technology.
+    exclude_carriers = ["load", "Load Shedding"]
     simple = pd.concat(
         [
             x.static.query(
