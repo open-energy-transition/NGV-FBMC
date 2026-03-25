@@ -708,7 +708,9 @@ def drop_existing_eur_buses(network: pypsa.Network) -> pypsa.Network:
     return network
 
 
-def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
+def add_new_eur_buses(
+    network: pypsa.Network, dispatch_result: pypsa.Network
+) -> pypsa.Network:
     """
     Add end point buses for each interconnector for a simplified network structure.
 
@@ -717,6 +719,8 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
     network: pypsa.Network
         Network with all but GB buses removed and the interconnectors dangling.
         End points will be added to this network.
+    dispatch_result: pypsa.Network
+        Result of the dispatch optimization, used to set the dispatch of the interconnectors.
     """
     interconnectors = filter_interconnectors(
         network.c.links.static, "carrier in ['DC']"
@@ -748,7 +752,7 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
         p_min_pu=-1,
         p_max_pu=1,
         p_set=-1
-        * network.get_switchable_as_dense("Link", "p_set").loc[
+        * dispatch_result.get_switchable_as_dense("Link", "p0").loc[
             :, interconnectors.index
         ],
         p_nom=interconnectors.p_nom,
@@ -1141,7 +1145,7 @@ if __name__ == "__main__":
 
     network = drop_existing_eur_buses(network)
 
-    network = add_new_eur_buses(network)
+    network = add_new_eur_buses(network, dispatch_result)
 
     network = release_annual_fuel_generation_constraints(network)
 
