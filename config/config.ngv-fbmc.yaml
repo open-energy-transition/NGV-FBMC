@@ -204,8 +204,8 @@ carrier_mapping:
     CCGT: [gas-ccgt]
     OCGT: [gas-ocgt, OCGT]
     battery storage: [battery charger, battery discharger, home battery charger, home battery discharger]
-    engine: [oil-light]
-    oil: [oil-heavy]
+    engine: [gas-ccgt]
+    oil: [oil]
 
 
 time_aggregation:
