@@ -797,16 +797,26 @@ def add_new_eur_buses(network: pypsa.Network) -> pypsa.Network:
     # * ramp up/down limits need to be inverted and switched
     # * marginal costs need to be inverted
     # since the interconnector limits are not changed, these inversions should have a relevant effect and not be just cosmetic
-    logger.info(
-        "Updating marginal_cost and ramp up/down limits for interconnector redispatch components"
-    )
-
-    # Invert the marginal_costs
-    network.generators.loc[ramp_gens.index, "marginal_cost"] *= -1
-
-    ### Switch the down/up limits
     ramp_down_gens = (interconnectors.index + " ramp down").to_list()
     ramp_up_gens = (interconnectors.index + " ramp up").to_list()
+
+    # Switch sign on ramp down components, such that
+    # * more imports increase system costs, and
+    # * more exports reduce system costs
+    logger.info(
+        "Updating marginal_cost for ramp down interconnector redispatch components"
+    )
+    network.c.generators.static.loc[ramp_down_gens, "marginal_cost"] *= -1
+    idx = network.components.generators.dynamic.marginal_cost.columns.intersection(
+        ramp_down_gens
+    )
+    if len(idx) > 0:
+        network.c.generators.dynamic.marginal_cost.loc[:, idx] *= -1
+
+    ### Switch the down/up limits
+    logger.info(
+        "Switching and inverting ramp up/down limits for interconnector redispatch components"
+    )
     ramp_down_limits = network.components.generators.dynamic.p_min_pu.loc[
         :, ramp_down_gens
     ]
