@@ -532,8 +532,8 @@ def create_up_down_plants(
                 .T.reindex(p_gb.index, axis="index")
                 .ffill()
                 - p_gb
-            )[fuel_updown_gens.index]
-            down_limit = -p_gb[fuel_updown_gens.index]
+            )[fuel_updown_gens.index] / p_nom
+            down_limit = -p_gb[fuel_updown_gens.index] / p_nom
 
             base_network.add(
                 "Generator",
@@ -560,73 +560,7 @@ def create_up_down_plants(
                 p_nom=p_nom,
                 p_nom_extendable=False,
                 efficiency=fuel_updown_gens.efficiency,
-                marginal_cost=0.1,  # Costs are already included in the multi-link marginal cost
-            )
-
-            # Manually insert oil generator:
-            # Since oil is represented as multi-stage multi-link, this is more complicated and not covered by the logic above
-            # However we have accounted for the marginal_cost fully with the generation links, as well as their redispatch limits
-            # so we simplify the process by adding corresponding unconstrained redispatch components for oil and hopefully are done with it then
-            oil_generator = dispatch_result.c.generators.static.query(
-                "`index` == 'EU oil primary'"
-            )
-            base_network.add(
-                "Generator",
-                oil_generator.index,
-                suffix=" ramp up",
-                bus=oil_generator.bus,
-                carrier="Generator ramp up",
-                p_min_pu=0,
-                p_max_pu=1,
-                p_nom=oil_generator.p_nom,
-                p_nom_extendable=oil_generator.p_nom_extendable,
-                efficiency=oil_generator.efficiency,
-                capital_cost=0,
-                marginal_cost=0.1,
-            )
-
-            base_network.add(
-                "Generator",
-                oil_generator.index,
-                suffix=" ramp down",
-                bus=oil_generator.bus,
-                carrier="Generator ramp down",
-                p_min_pu=-1,
-                p_max_pu=0,
-                p_nom=oil_generator.p_nom,
-                p_nom_extendable=oil_generator.p_nom_extendable,
-                efficiency=oil_generator.efficiency,
-                capital_cost=0,
-                marginal_cost=0.1,
-            )
-
-            refining_link = dispatch_result.c.links.static.query(
-                "`name` == 'EU oil refining'"
-            )
-            # Logic above adds these link already, so we need to remove them first
-            base_network.remove(
-                "Link", refining_link.index, suffix=[" ramp up", " ramp down"]
-            )
-
-            base_network.add(
-                "Link",
-                refining_link.index,
-                suffix=" ramp up",
-                **refining_link.assign(
-                    p_min_pu=0,
-                    p_max_pu=1,
-                    carrier="Link ramp up",
-                ).to_dict(),
-            )
-            base_network.add(
-                "Link",
-                refining_link.index,
-                suffix=" ramp down",
-                **refining_link.assign(
-                    p_min_pu=-1,
-                    p_max_pu=0,
-                    carrier="Link ramp down",
-                ).to_dict(),
+                marginal_cost=-0.1,  # Costs are already included in the multi-link marginal cost
             )
 
             # In addition modify the fixed-dispatch of the fuel generators to only provide generation for GB
