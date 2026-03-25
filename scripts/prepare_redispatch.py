@@ -379,25 +379,25 @@ def create_up_down_plants(
             # Oil is more complicated to calculate
             oil_fuel_costs = (
                 # refining cost
-                network.c.links.static.query("`bus0`=='EU oil primary'")[
+                base_network.c.links.static.query("`bus0`=='EU oil primary'")[
                     "marginal_cost"
                 ]
                 # crude prices
                 + (
-                    network.c.generators.static.query("`bus`=='EU oil primary'")[
+                    base_network.c.generators.static.query("`bus`=='EU oil primary'")[
                         "marginal_cost"
                     ]
-                    / network.c.generators.static.query("`bus`=='EU oil primary'")[
+                    / base_network.c.generators.static.query("`bus`=='EU oil primary'")[
                         "efficiency"
                     ]
                 ).item()
                 # CO2 emissions for refining
                 + (-1)
                 * (
-                    network.c.stores.static.query("`bus`=='co2 atmosphere'")[
+                    base_network.c.stores.static.query("`bus`=='co2 atmosphere'")[
                         "marginal_cost"
                     ].item()
-                    * network.c.links.static.query("`name`=='EU oil refining'")[
+                    * base_network.c.links.static.query("`name`=='EU oil refining'")[
                         "efficiency2"
                     ].item()
                 )
@@ -457,8 +457,10 @@ def create_up_down_plants(
 
                 # Prices are static in this case, but for consistency we add them to the dynamic attribute
                 prices_time = pd.DataFrame(
-                    np.repeat([prices_static.values], len(network.snapshots), axis=0),
-                    index=network.snapshots,
+                    np.repeat(
+                        [prices_static.values], len(base_network.snapshots), axis=0
+                    ),
+                    index=base_network.snapshots,
                     columns=prices_static.index,
                 )
 
