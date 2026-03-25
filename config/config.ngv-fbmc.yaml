@@ -150,12 +150,12 @@ carrier_mapping:
   Generator:
     Load Shedding: load
     biomass: solid biomass
-    engine: oil-heavy
+    engine: gas-ccgt
     geothermal: geothermal
     nuclear: nuclear
     offwind-dc: offwind-dc-fl-oh
     onwind: onwind
-    oil: oil-heavy
+    oil: oil
     solar: solar-pv-utility
     waste: waste
     CCGT: gas-ccgt
