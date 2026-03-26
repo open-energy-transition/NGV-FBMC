@@ -51,14 +51,14 @@ def fix_dispatch(
     for comp in dispatch_result.components[
         ["Generator", "Line", "Link", "StorageUnit"]
     ]:
-        if comp.name in ["Generator"]:
+        if comp.name in ["Generator", "StorageUnit"]:
             p_fix = comp.dynamic.p
 
             # Some components are still expendable, e.g. EU-wide fuel sources; make them non-extendable
             col = [c for c in comp.static.columns if "extendable" in c][0]
             base_network.components[comp.name].static[col] = False
 
-        elif comp.name in ["Line", "StorageUnit"]:
+        elif comp.name == "Line":
             # Do not fix the dispatch for lines (intra-GB). Skip explicitly
             continue
 
@@ -213,7 +213,7 @@ def create_up_down_plants(
     # Identify which carriers are represented as multi-Link components (with bus2 for CO2 tracking)
     multilink_carriers = _get_multilink_carriers(base_network)
 
-    for comp in base_network.components[["Generator", "Link"]]:
+    for comp in base_network.components[["Generator", "StorageUnit", "Link"]]:
         base_network.add("Carrier", [f"{comp.name} ramp up", f"{comp.name} ramp down"])
 
         g = comp.static

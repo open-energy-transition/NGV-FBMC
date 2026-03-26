@@ -172,3 +172,4 @@ def custom_constraints(
     # Apply boundary constraints
     set_boundary_constraints(n, snapshots, snakemake)
     remove_KVL_constraints(n, snapshots, snakemake)
+    update_storage_balance(n)
