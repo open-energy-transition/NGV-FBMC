@@ -662,6 +662,60 @@ def adjust_gb_biomass_costs(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def patch_OH_interconnector_capacities(
+    n: pypsa.Network, planning_horizon: int
+) -> pypsa.Network:
+    """
+    Patches the interconnector capacities for stranded offshore hubs in openTYNDP.
+
+    Due to an error in the openTYNDP input data, some interconnectors to offshore hubs have 0 capacity, leading
+    to stranding of their assets and unnecessarily high curtailment.
+    This is fixed by the PR upstream: https://github.com/open-energy-transition/open-tyndp/pull/568 .
+    This PR is not pulled into the project, so we apply this fixed manually.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the interconnector capacities should be patched.
+    planning_horizon : int
+        The planning horizon, used to determine which interconnectors should be patched.
+    """
+
+    patch_interconnectors_all = {
+        "2030": [
+            "GBOH003-GB00-Offshore DC-2030",
+            "GBOH004-IE00-Offshore DC-2030",
+            "GBOH004-GB00-Offshore DC-2030",
+            "GBOH006-GB00-Offshore DC-2030",
+            "IEOH001-IE00-Offshore DC-2030",
+            "NLOH001-NL00-Offshore DC-2030",
+            "NLOH001-GB00-Offshore DC-2030",
+            "NOSOH01-NOS0-Offshore DC-2030",
+            "PLOH001-PL00-Offshore DC-2030",
+        ],
+        "2040": [
+            "FROH001-FR00-Offshore DC-2040",
+            "NOMOH01-NOM1-Offshore DC-2040",
+            "NONOH01-NON1-Offshore DC-2040",
+            "NOSOH02-NOS0-Offshore DC-2040",
+            "PLOH001-PL00-Offshore DC-2040",
+            "PTOH001-PT00-Offshore DC-2040",
+            "SEOH002-SE03-Offshore DC-2040",
+            "GBOH003-GB00-Offshore DC-2040",
+            "GBOH004-IE00-Offshore DC-2040",
+            "GBOH004-GB00-Offshore DC-2040",
+            "GBOH005-GB00-Offshore DC-2040",
+            "GBOH006-GB00-Offshore DC-2040",
+        ],
+    }
+
+    patch_interconnectors = patch_interconnectors_all[str(planning_horizon)]
+
+    n.c.links.static.loc[patch_interconnectors, "p_nom"] = np.inf
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -669,7 +723,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             Path(__file__).stem,
-            planning_horizons="2030",
+            planning_horizons="2040",
         )
     configure_logging(snakemake)
 
@@ -692,6 +746,12 @@ if __name__ == "__main__":
     # Reset networks before merging
     n_gb = reset_network(n_gb)
     n_eur = reset_network(n_eur)
+
+    # Patch: Interconnector capacities for stranded OH in openTYNDP. Fixed upstream with https://github.com/open-energy-transition/open-tyndp/pull/568
+    # But that is not pulled into the project, so we do a manual patch here
+    n_eur = patch_OH_interconnector_capacities(
+        n=n_eur, planning_horizon=int(snakemake.wildcards.planning_horizons)
+    )
 
     # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
