@@ -80,6 +80,7 @@ def fix_dispatch(
                     "gb_buses": gb_buses,
                     "carriers": [
                         "gas-ccgt",
+                        "gas-ocgt",
                         "nuclear",
                         "oil refining",
                         "solid biomass",
