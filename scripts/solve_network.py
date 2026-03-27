@@ -1724,7 +1724,11 @@ if __name__ == "__main__":
                 mode="single",
             )
             extra_constraints = []
-            if snakemake.params.scenario == "FBMC":
+            # FBMC constraints are only applied to the dispatch model
+            if (
+                snakemake.params.scenario == "FBMC"
+                and snakemake.rule == "solve_dispatch"
+            ):
                 extra_constraints.append(
                     FBMCConstraint.from_netcdf(
                         snakemake.input.ptdf, snakemake.input.ram
