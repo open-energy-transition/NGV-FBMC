@@ -6,6 +6,9 @@
 import logging
 import re
 import pypsa
+import numpy as np
+from scripts._helpers import configure_logging
+from scripts.prepare_redispatch import load_boundary_crossings_file
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +153,7 @@ def merge_gb_tyndp(
         gb.c["Link"].static.loc[link.index, "bus1"] = "GBNI"
 
     # Map carriers from GB model to carrier names in the openTYNDP model
-    # leave generators for now, they are reassigned in the add_co2_multilink function
+    # leave generators for now, they are reassigned in the convert_generators_to_links function
     for comp in gb.components[["Link", "Store", "StorageUnit", "Load"]]:
         comp.static["carrier"] = comp.static["carrier"].replace(carrier_map[comp.name])
 
@@ -198,7 +201,8 @@ def add_waste_element(
         name="EU waste",
         bus="EU waste",
         carrier="waste",
-        p_nom_extendable=True,
+        p_nom_extendable=False,
+        p_nom=np.inf,
         marginal_cost={
             2030: 19.0145,
             2040: 21.131,
@@ -215,19 +219,18 @@ def add_waste_element(
     # Attach the electricity from waste generator as link to all GB buses with AC carrier
     n_merged.add(
         "Link",
-        name=ref_waste_gens["bus"].to_numpy(),
-        suffix=" waste for electricity",
+        name=ref_waste_gens.index,
         bus0="EU waste",
-        bus1=ref_waste_gens["bus"].to_numpy(),
+        bus1=ref_waste_gens["bus"],
         bus2="co2 atmosphere",
         carrier="waste",
         efficiency=0.2102,  # hard coded from fes_powerplants_inc_tech_data.csv
         efficiency2=0,  # EU regs consider waste to be a non-emitting renewable
-        p_nom_extendable=ref_waste_gens["p_nom_extendable"].to_numpy(),
-        p_nom=ref_waste_gens["p_nom"].to_numpy(),
+        p_nom_extendable=ref_waste_gens["p_nom_extendable"],
+        p_nom=ref_waste_gens["p_nom"],
         capital_cost=ref_waste_gens[
             "capital_cost"
-        ].to_numpy(),  # Not normalised, as capacity expansion is off, this number will not affect the model results
+        ],  # Not normalised, as capacity expansion is off, this number will not affect the model results
         marginal_cost=3.145,  # from fes_powerplants_inc_tech_data.csv, not normalized for lack of suitable reference
         marginal_cost_quadratic=0,
     )
@@ -245,6 +248,9 @@ def add_waste_element(
         n_merged.c["Generator"].dynamic[p_lim] = (
             n_gb.c["Generator"].dynamic[p_lim].loc[:, mask]
         )
+
+    # Remove the original waste generators after the link version is created
+    n_merged.remove("Generator", ref_waste_gens.index)
 
     return n_merged
 
@@ -268,11 +274,16 @@ def convert_generators_to_links(
     # aligned with their carrier names, but the components will not be converted to Links
     for gb_carrier, eur_carrier in carrier_map["Generator"].items():
         # check that the generator type isn't intended to stay as a generator (e.g. solar and other renewables)
-        if not (
+        # for those the generator carrier is only changed, all others are convert to links
+        if (
             ("solar" in eur_carrier)
             or ("wind" in eur_carrier)
             or ("geothermal" in eur_carrier)
         ):
+            n_merged.c["Generator"].static.loc[
+                n_merged.c["Generator"].static.carrier == gb_carrier, "carrier"
+            ] = eur_carrier
+        else:
             gens = n_merged.generators[
                 (n_merged.generators.carrier == gb_carrier)
                 & (n_merged.generators.bus.str.startswith("GB "))
@@ -523,6 +534,188 @@ def remove_unused_carriers(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def reorder_line_directions(
+    n: pypsa.Network, manual_boundaries_fp: str
+) -> pypsa.Network:
+    """
+    Reorders the line directions in the network to ensure that they are consistent with the specified boundaries.
+
+    The clustering algorithm does not deterministically assign the same line directions (bus0, bus1) in each run.
+    In order to align with externally calculated PTDF data, we correct the line directions at this point
+    to ensure they are consistent with the specified boundaries and therefore also between runs.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the line directions should be reordered.
+    manual_boundaries_fp : str
+        The file path to the manual boundary definitions.
+
+
+    Returns
+    -------
+    pypsa.Network
+        The network with reordered line directions.
+    """
+    # Load external boundary crossings file
+    boundaries = load_boundary_crossings_file(manual_boundaries_fp)
+
+    logger.info("Reordering line directions")
+    for comp_name, boundary, bus0, bus1 in boundaries.itertuples(index=False):
+        correct = n.c[comp_name].static.query(
+            "`bus0` == @bus0 and `bus1` == @bus1",
+            local_dict={"bus0": bus0, "bus1": bus1},
+        )
+        switched = n.c[comp_name].static.query(
+            "`bus0` == @bus0 and `bus1` == @bus1",
+            local_dict={"bus0": bus1, "bus1": bus0},
+        )
+
+        if correct.empty and switched.empty:
+            raise ValueError(
+                f"Expected {comp_name} between {bus0} and {bus1} but None found in the network. "
+                f"Check whether the {comp_name} is missing or whether the manual boundary definition is incorrect."
+            )
+        elif not switched.empty:
+            logger.info(
+                f"Switching direction of flow for {comp_name}: {switched.index.tolist()} to {bus0} -> {bus1}"
+            )
+            n.c[comp_name].static.loc[switched.index, ["bus0", "bus1"]] = (bus0, bus1)
+        else:
+            # Correctly oriented, nothing to do
+            pass
+
+    return n
+
+
+def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
+    """
+    Patches the bus names to have infinite capacity with p_nom_extendable=False for consistency across scenarios.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the bus names should be patched.
+    """
+
+    # Fuel generators to be affected
+    idx = [
+        "EU lignite",
+        "EU coal",
+        "EU oil primary",
+        "EU uranium",
+        "EU gas",
+        "EU biogas",
+        "EU solid biomass",
+        "EU waste",
+    ]
+
+    logger.info(f"Patching EU fuel generators: {idx}")
+
+    n.c.generators.static.loc[idx, "p_nom"] = np.inf
+    n.c.generators.static.loc[idx, "p_nom_extendable"] = False
+
+    stores_idx = n.c.stores.static.query(
+        "`bus` in @fuel_buses", local_dict={"fuel_buses": idx}
+    ).index
+    n.remove("Store", stores_idx)
+
+    # Negligible contributions -> model simplification by removing these components
+    idx = n.c.links.static.query(
+        "`index`.str.contains('EU solid biomass biomass to liquid CC') or "
+        "`index`.str.contains('EU solid biomass biogas to liquid-2040')"
+    ).index
+    if len(idx) > 0:
+        logger.info(f"Removing links as model simplification: {idx}")
+        n.remove("Link", idx)
+
+    return n
+
+
+def adjust_gb_biomass_costs(n: pypsa.Network) -> pypsa.Network:
+    """
+    Adjusts the costs for biomass generators in GB to match the assumptions in the TYNDP model.
+
+    The costs from transforming the biomass Generator-components to Link-components
+    preserves the marginal_costs. However, as the generators are attached to the model
+    wide EU solid biomass bus, the fuel costs need to be reduced to avoid double counting
+    of fuel costs for biomass in GB in the model.
+
+    The costs are set to a small value, whilst the fuel costs are now accounted for through
+    the EU solid biomass bus.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the biomass generator costs should be adjusted.
+    """
+
+    # Biomass generators to be affected
+    idx = n.c.links.static.query(
+        "carrier == 'solid biomass' and bus1.str.startswith('GB ')"
+    ).index
+
+    logger.info(f"Adjusting costs for GB biomass generators: {idx}")
+
+    n.c.links.static.loc[idx, "marginal_cost"] = 0.1
+
+    return n
+
+
+def patch_OH_interconnector_capacities(
+    n: pypsa.Network, planning_horizon: int
+) -> pypsa.Network:
+    """
+    Patches the interconnector capacities for stranded offshore hubs in openTYNDP.
+
+    Due to an error in the openTYNDP input data, some interconnectors to offshore hubs have 0 capacity, leading
+    to stranding of their assets and unnecessarily high curtailment.
+    This is fixed by the PR upstream: https://github.com/open-energy-transition/open-tyndp/pull/568 .
+    This PR is not pulled into the project, so we apply this fixed manually.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the interconnector capacities should be patched.
+    planning_horizon : int
+        The planning horizon, used to determine which interconnectors should be patched.
+    """
+
+    patch_interconnectors_all = {
+        "2030": [
+            "GBOH003-GB00-Offshore DC-2030",
+            "GBOH004-IE00-Offshore DC-2030",
+            "GBOH004-GB00-Offshore DC-2030",
+            "GBOH006-GB00-Offshore DC-2030",
+            "IEOH001-IE00-Offshore DC-2030",
+            "NLOH001-NL00-Offshore DC-2030",
+            "NLOH001-GB00-Offshore DC-2030",
+            "NOSOH01-NOS0-Offshore DC-2030",
+            "PLOH001-PL00-Offshore DC-2030",
+        ],
+        "2040": [
+            "FROH001-FR00-Offshore DC-2040",
+            "NOMOH01-NOM1-Offshore DC-2040",
+            "NONOH01-NON1-Offshore DC-2040",
+            "NOSOH02-NOS0-Offshore DC-2040",
+            "PLOH001-PL00-Offshore DC-2040",
+            "PTOH001-PT00-Offshore DC-2040",
+            "SEOH002-SE03-Offshore DC-2040",
+            "GBOH003-GB00-Offshore DC-2040",
+            "GBOH004-IE00-Offshore DC-2040",
+            "GBOH004-GB00-Offshore DC-2040",
+            "GBOH005-GB00-Offshore DC-2040",
+            "GBOH006-GB00-Offshore DC-2040",
+        ],
+    }
+
+    patch_interconnectors = patch_interconnectors_all[str(planning_horizon)]
+
+    n.c.links.static.loc[patch_interconnectors, "p_nom"] = np.inf
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -530,8 +723,9 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             Path(__file__).stem,
-            planning_horizons="2030",
+            planning_horizons="2040",
         )
+    configure_logging(snakemake)
 
     # Map from configfile
     carrier_map = snakemake.params.carrier_map
@@ -552,6 +746,12 @@ if __name__ == "__main__":
     # Reset networks before merging
     n_gb = reset_network(n_gb)
     n_eur = reset_network(n_eur)
+
+    # Patch: Interconnector capacities for stranded OH in openTYNDP. Fixed upstream with https://github.com/open-energy-transition/open-tyndp/pull/568
+    # But that is not pulled into the project, so we do a manual patch here
+    n_eur = patch_OH_interconnector_capacities(
+        n=n_eur, planning_horizon=int(snakemake.wildcards.planning_horizons)
+    )
 
     # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
@@ -586,19 +786,14 @@ if __name__ == "__main__":
 
     n_merged = remove_unused_carriers(n_merged)
 
+    n_merged = patch_EU_fuel_generators(n_merged)
+
+    n_merged = adjust_gb_biomass_costs(n_merged)
+
     # After merging we get rid of all attributes that are potential outputs from the model
     # Due to https://github.com/PyPSA/PyPSA/issues/1606 we do this on the individual networks before the merge
     # and on the merged network again
     n_merged = reset_network(n_merged)
-
-    # Cluster the network by time
-    # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
-    # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
-    # If we cluster later during solve_network, the clustering might yield different results due to
-    # different time-series in the scenarios.
-    # By clustering before, we avoid this potential issue
-    if snakemake.params.time_aggregation["enable"]:
-        n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
 
     # Make it easier for downstream rules to identify GB buses and components by assigning a country attribute
     n_merged.buses.loc[n_merged.buses.index.str.match(r"GB\s+"), "country"] = "GB"
@@ -613,8 +808,31 @@ if __name__ == "__main__":
     )
     n_merged.links.loc[n_merged.links.index.str.match("GBNI"), "country"] = "GBNI"
 
+    # Cluster the network by time
+    # We intentionally cluster on the IEM network, rather than at a later stage, e.g. during solve_network
+    # The reason is that we want the three scenarios, IEM, SQ, TF, to behave as similarly as possible.
+    # If we cluster later during solve_network, the clustering might yield different results due to
+    # different time-series in the scenarios.
+    # By clustering before, we avoid this potential issue
+    if snakemake.params.time_aggregation["enable"]:
+        n_merged = cluster_network_by_time(n_merged, snakemake.params.time_aggregation)
+
+    # Patch: Due to machine EPS issues the p_min_pu values for the following generator is
+    # considered to be above p_max_pu; manually fix this:
+    cnames = ["ES00 nuclear-2030", "HU00 nuclear-2040"]
+    for cname in cnames:
+        if cname in n_merged.c.links.static.index:
+            logger.info(f"Patching {cname}: Set p_min_pu <= p_max_pu")
+            snapshot_idx = (
+                n_merged.c.links.dynamic.p_min_pu[cname]
+                > n_merged.c.links.dynamic.p_max_pu[cname]
+            )
+            n_merged.c.links.dynamic.p_min_pu.loc[snapshot_idx, cname] = (
+                n_merged.c.links.dynamic.p_max_pu.loc[snapshot_idx, cname]
+            )
+
     # Never hurts
-    n_merged.consistency_check(strict=None)
+    n_merged.consistency_check(strict="all")
 
     # Give the new network a proper name
     n_merged.name = (

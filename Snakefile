@@ -118,14 +118,38 @@ rule run_gbdispatchmodel_as_rule:
             "config/config.gb-dispatch.yaml",
         ],
     output:
-        network_dispatch=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
+        networks_dispatch=expand(
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
+            ),
+            planning_horizons=["2030", "2040"],
         ),
-        network_redispatch=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+        networks_redispatch=expand(
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            ),
+            planning_horizons=["2030", "2040"],
         ),
-        results_dispatch=gbdispatchmodel(
-            "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+        results_dispatch=expand(
+            gbdispatchmodel(
+                "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            ),
+            planning_horizons=["2030", "2040"],
+        ),
+        renewable_strike_prices=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
+        ),
+        bid_offer_multipliers=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
+        ),
+        current_etys_caps=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/etys_boundary_capabilities.csv"
+        ),
+        future_etys_caps=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/HT/future_etys_boundary_capabilities.csv"
+        ),
+        boundary_crossings=gbdispatchmodel(
+            "resources/GB-ETYS-subset/etys_boundary_crossings.csv"
         ),
     shell:
         """
@@ -133,7 +157,7 @@ rule run_gbdispatchmodel_as_rule:
             --manifest-path={input.manifest} \
             --environment=gb-model \
             snakemake \
-                --cores 1 \
+                --profile profiles/default \
                 --snakefile modules/gb-dispatch-model/Snakefile \
                 --directory modules/gb-dispatch-model \
                 --configfile {input.overwrite_configfiles} \
@@ -191,6 +215,7 @@ rule prepare_scenario_IEM:
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
         ),
+        external_boundary_definitions="config/boundary_definitions.yaml",
     output:
         model="resources/base/networks/IEM/{planning_horizons}.nc",
     log:
@@ -318,7 +343,6 @@ rule solve_dispatch:
             rules.prepare_scenario_FBMC.input.ram,
         ),
         # TYNDP specific
-        # TODO make sure logic is in solve_network
         offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
         network="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
@@ -328,7 +352,7 @@ rule solve_dispatch:
         memory="logs/solve_dispatch/{scenario}/{planning_horizons}_memory.log",
         python="logs/solve_dispatch/{scenario}/{planning_horizons}_python.log",
     benchmark:
-        "results/dispatch/benchmarks/solve_network/{scenario}/unconstrained_clustered/{planning_horizons}"
+        "results/dispatch/benchmarks/solve_network/{scenario}/{planning_horizons}"
     threads: config["solving"]["solver_options"]["threads"]
     resources:
         mem_mb=config["solving"]["mem_mb"],
@@ -340,16 +364,45 @@ rule solve_dispatch:
         "scripts/solve_network.py"
 
 
+rule calc_interconnector_bid_offer_profile:
+    message:
+        "Calculate interconnector bid/offer profiles"
+    input:
+        bids_and_offers=rules.run_gbdispatchmodel_as_rule.output.bid_offer_multipliers,
+        unconstrained_result="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+    output:
+        bid_offer_profile="resources/redispatch/interconnector_bid_offer_profile/{scenario}/{planning_horizons}.csv",
+    log:
+        "logs/calc_interconnector_bid_offer_profile/{scenario}/{planning_horizons}.log",
+    script:
+        "scripts/gb_model/redispatch/calc_interconnector_bid_offer_profile.py"
+
+
 rule prepare_redispatch:
     message:
         "Preparing redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
+    params:
+        GBP_to_EUR=config["GBP_to_EUR"],
+        strike_price_mapping=config["carrier_mapping"]["strike_price_mapping"],
+        unconstrain_lines_and_links=config["redispatch"]["unconstrain_lines_and_links"],
+        no_redispatch_carriers=config["redispatch"]["no_redispatch_carriers"],
     input:
-        dispatch_results="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
-        model="resources/base/networks/{scenario}/{planning_horizons}.nc",
+        network="resources/base/networks/{scenario}/{planning_horizons}.nc",
+        dispatch_result=rules.solve_dispatch.output.network,
+        interconnector_bid_offer=rules.calc_interconnector_bid_offer_profile.output.bid_offer_profile,
+        boundary_crossings="config/boundary_definitions.yaml",
+        # Unchanged from GB dispatch model
+        renewable_strike_prices=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
+        ),
+        bids_and_offers=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
+        ),
     output:
-        redispatch_model="resources/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
+        network="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
+        boundary_crossings="resources/redispatch/boundary_crossings/{scenario}/{planning_horizons}.csv",
     log:
-        "logs/prepare_redispatch/{scenario}_{planning_horizons}.log",
+        "logs/prepare_redispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/prepare_redispatch.py"
 
@@ -357,11 +410,68 @@ rule prepare_redispatch:
 rule solve_redispatch:
     message:
         "Running the redispatch for year {wildcards.planning_horizons} in scenario: {wildcards.scenario}."
+    params:
+        solving=config["solving"],
+        foresight=config["foresight"],
+        co2_sequestration_potential=config["sector"]["co2_sequestration_potential"],
+        renewable_carriers=config["electricity"]["renewable_carriers"],
+        # GB dispatch model specific
+        custom_extra_functionality="scripts/gb_model/redispatch/custom_constraints.py",
+        manual_future_etys_caps=branch(
+            config["etys"]["use_future_capacities"],
+            config["etys"]["manual_future_capacities"],
+            {},
+        ),
+        # openTYNDP specific: Not used (because OH trajectories are off)
+        # but keeping for consistency to be able to reuse code from the openTYNDP model
+        renewable_carriers_tyndp=config["electricity"]["tyndp_renewable_carriers"],
     input:
-        redispatch_model=rules.prepare_redispatch.output.redispatch_model,
+        network=rules.prepare_redispatch.output.network,
+        current_etys_caps=gbdispatchmodel(
+            "resources/GB-ETYS-subset/gb-model/etys_boundary_capabilities.csv"
+        ),
+        future_etys_caps=branch(
+            config["etys"]["use_future_capacities"],
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/gb-model/HT/future_etys_boundary_capabilities.csv"
+            ),
+            [],
+        ),
+        boundary_crossings=rules.prepare_redispatch.output.boundary_crossings,
+        # TYNDP specific
+        offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
     output:
-        redispatch_results="results/dispatch/redispatch/{scenario}/{planning_horizons}.nc",
+        network="results/redispatch/networks/{scenario}/{planning_horizons}.nc",
+        config="results/redispatch/configs/{scenario}/{planning_horizons}.yaml",
+    log:
+        solver="logs/solve_redispatch/{scenario}/{planning_horizons}_solver.log",
+        memory="logs/solve_redispatch/{scenario}/{planning_horizons}_memory.log",
+        python="logs/solve_redispatch/{scenario}/{planning_horizons}_python.log",
+    benchmark:
+        "results/redispatch/benchmarks/solve_network/{scenario}/{planning_horizons}"
+    threads: config["solving"]["solver_options"]["threads"]
+    resources:
+        mem_mb=config["solving"]["mem_mb"],
+        runtime=config["solving"]["runtime"],
+        parallel_solving=1,
+    shadow:
+        config["run"]["use_shadow_directory"]
     log:
         "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
-        "scripts/solve_redispatch.py"
+        "scripts/solve_network.py"
+
+
+rule all:
+    input:
+        expand(
+            "results/dispatch/networks/{scenario}/{planning_horizons}.nc",
+            scenario=config["scenarios"],
+            planning_horizons=config["planning_horizons"],
+        ),
+        expand(
+            "results/redispatch/networks/{scenario}/{planning_horizons}.nc",
+            scenario=config["scenarios"],
+            planning_horizons=config["planning_horizons"],
+        ),
+    default_target: True

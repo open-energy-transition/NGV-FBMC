@@ -2,6 +2,117 @@ run:
   prefix: ""
   name: "ngv-fbmc"
 
+scenarios:
+- IEM
+- SQ
+- FBMC
+
+planning_horizons:
+- 2030
+- 2040
+
+redispatch:
+  unconstrain_lines_and_links: true
+  no_redispatch_carriers:
+  - nuclear
+  - geothermal # No bid/offer multiplier and negligible capacity, so no redispatch for simplicity
+  - co2 sequestered
+  - electricity distribution grid # Loads are connected through this carrier; no redispatch on the links connecting the loads
+  - biomass to liquid
+  - biogas to gas
+  # Lack of guidance and clarity on redispatch about the following carriers and components
+  # therefore do not fix their dispatch and allow them to freely redispatch
+  - battery charger
+  - battery discharger
+  - home battery charger
+  - home battery discharger
+  - H2 Electrolysis
+  - H2 Store
+  - h2-ccgt
+  # These carriers from the phase1 / openTYNDP model
+  # We add them here to suppress warnings - due to the logic they will not be added to 
+  # the model anyway, but it makes for a clearer log file
+  - H2 import Pipeline
+  - H2 pipeline
+  - H2 import LH2
+  - DC_OH
+
+etys:
+  use_future_capacities: true
+  manual_future_capacities:
+    # Capabilities used and provided by N-Side
+    B3b:
+      2030: 400
+      2040: 400
+    B4:
+      2030: 9400
+      2040: 10500
+    B5:
+      2030: 10200
+      2040: 13100
+    B6:
+      2030: 13600
+      2040: 24300
+    B7a:
+      2030: 18400
+      2040: 28700
+    B8:
+      2030: 19400
+      2040: 33900
+    B9:
+      2030: 15600
+      2040: 28800
+    B0:
+      2030: 3400
+      2040: 3400
+    EC5:
+      2030: 11300
+      2040: 11300
+    LE1:
+      2030: 17200
+      2040: 21300
+    B13:
+      2030: 6500
+      2040: 6500
+    SC1.5:
+      2030: 9400
+      2040: 9400
+    SW1:
+      2030: 2900
+      2040: 2900
+    SC2:
+      2030: 4300
+      2040: 4300
+    SC3:
+      2030: 7300
+      2040: 7300
+    SC1:
+      2030: 6100
+      2040: 6100
+    NW2:
+      2030: 3400
+      2040: 7500
+    NW3:
+      2030: 5500
+      2040: 5500
+    B14:
+      2030: 11600
+      2040: 11600
+    B1a:
+      2030: 8200
+      2040: 9200
+    B2:
+      2030: 9100
+      2040: 10100
+    NW1:
+      2030: 1800
+      2040: 1800
+
+# Conversion rate for GBP to EUR
+# Choosen consistently with the GB dispatch model
+# average in 2021: https://www.exchangerates.org.uk/GBP-EUR-spot-exchange-rates-history-2021.html#:~:text=This%20is%20the%20British%20Pound,rate%20in%202021%3A%201.1632%20EUR.
+GBP_to_EUR: 1.1632
+
 # Max and min annual capacity factors for the nuclear generators across the model
 conventional:
   nuclear:
@@ -17,33 +128,34 @@ sector:
 electricity:
   renewable_carriers: []
   tyndp_renewable_carriers:
-    - other-res
-    - hydro-ror
-    - hydro-reservoir
-    - hydro-pondage
-    - hydro-phs
-    - hydro-phs-pure
-    - onwind
-    - solar-pv-utility
-    - solar-pv-rooftop
-    - offwind-ac-fb-r
-    - offwind-ac-fl-r
-    - offwind-dc-fb-r
-    - offwind-dc-fl-r
-    - offwind-dc-fb-oh
-    - offwind-dc-fl-oh
-    - offwind-h2-fb-oh
-    - offwind-h2-fl-oh
+  - other-res
+  - hydro-ror
+  - hydro-reservoir
+  - hydro-pondage
+  - hydro-phs
+  - hydro-phs-pure
+  - onwind
+  - solar-pv-utility
+  - solar-pv-rooftop
+  - offwind-ac-fb-r
+  - offwind-ac-fl-r
+  - offwind-dc-fb-r
+  - offwind-dc-fl-r
+  - offwind-dc-fb-oh
+  - offwind-dc-fl-oh
+  - offwind-h2-fb-oh
+  - offwind-h2-fl-oh
 
 carrier_mapping:
   Generator:
     Load Shedding: load
     biomass: solid biomass
-    engine: oil-heavy
+    engine: gas-ccgt
     geothermal: geothermal
     nuclear: nuclear
     offwind-dc: offwind-dc-fl-oh
-    oil: oil-heavy
+    onwind: onwind
+    oil: oil
     solar: solar-pv-utility
     waste: waste
     CCGT: gas-ccgt
@@ -56,7 +168,7 @@ carrier_mapping:
     Baseline Electricity unmanaged load: electricity distribution grid
     EV DSR reverse: home battery discharger
     EV DSR shift: home battery charger
-    EV unmanaged load: home battery charger
+    EV unmanaged load: electricity distribution grid
     H2 Turbine: h2-ccgt
     I&C Heat DSR reverse: battery discharger
     I&C Heat DSR shift: battery charger
@@ -83,18 +195,35 @@ carrier_mapping:
     I&C Heat DSR: battery
     Residential Heat DSR: battery
     EV V2G: home battery
+  strike_price_mapping:
+    biomass: [solid biomass]
+    offwind-dc: [offwind-ac-fb-r, offwind-ac-fl-r, offwind-dc, offwind-dc-fl-oh]
+    onwind: [onwind]
+    solar: [solar-pv-utility, solar-pv-rooftop, solar]
+    waste: [waste]
+    CCGT: [gas-ccgt]
+    OCGT: [gas-ocgt, OCGT]
+    battery storage: [battery charger, battery discharger, home battery charger, home battery discharger]
+    engine: [gas-ccgt]
+    oil: [oil]
+
 
 time_aggregation:
-  enable: true
+  enable: false
   method: segment
   parameters:
     num_segments: 2190 # 4x smaller snapshots size
-    exclude_attrs: ["e_min_pu", "e_max_pu"] # Concern from GB model: demand-side flexibility implemented via store. Concern: Step changes could confuse the segmentation algorithm
+    exclude_attrs: [] # Concern from GB model: demand-side flexibility implemented via store. Concern: Step changes could confuse the segmentation algorithm
 
 solving:
   options:
     load_shedding: 4e3
+    clip_p_max_pu: 1.e-2
+    curtailment_mode: false
     noisy_costs: false # Upstream models already run solve_network once, so no need to add noise here again
+    skip_iterations: true
+    rolling_horizon: false
+    transmission_losses: 0
     include_objective_constant: false
   solver:
     name: gurobi
@@ -112,28 +241,28 @@ explicit_allocation:
   to_from: "GB"
   # Carriers for the links; note, only Link components are supported, not Line components
   connection_types:
-    - DC
+  - DC
   # List of all the connections for which the explicit allocation should be applied
   # Connections may reference to one or more connection, by using regex wildcards for the name.
   # E.g. "GBOH001-DKWOH01-Offshore DC-20[34]0" will apply to
   # "GBOH001-DKWOH01-Offshore DC-2030" and "GBOH001-DKWOH01-Offshore DC-2040"
   connections:
-    - Aminth
-    - BritNed
-    - Cronos
-    - ElecLink
-    - FAB Link
-    - Gridlink
-    - IFA\d? # Matches IFA and IFA2
-    - Kulizumboo
+  - Aminth
+  - BritNed
+  - Cronos
+  - ElecLink
+  - FAB Link
+  - Gridlink
+  - IFA\d?   # Matches IFA and IFA2
+  - Kulizumboo
       # - LionLink \(EuroLink\) # Not build in newer versions
-    - NS Link \(NSL\)
-    - Nautilus
-    - Nemo
-    - NeuConnect
-    - SENECA
+  - NS Link \(NSL\)
+  - Nautilus
+  - Nemo
+  - NeuConnect
+  - SENECA
       # - Tarchon # Not build in newer versions
-    - Viking Link
+  - Viking Link
       # Connected to IE/NI - optimal allocation
       # - East-West
       # - Gallant
@@ -151,121 +280,136 @@ forecast_errors:
     # Note: The names of the carriers will be matched as "carriers containing this string independent of case", so e.g.
     # "offwind" will match "Offwind", "offwind-dc", etc.
     "_Wind":
-      - "|generators|onwind"
-      - "|generators|offwind"
+    - "|generators|onwind"
+    - "|generators|offwind"
     "_Solar":
-      - "|generators|solar-pv"
+    - "|generators|solar-pv"
     "_Load":
-      - "|loads|electricity"
+    - "|loads|electricity"
   bus_mapping:
     # Mapping of the bus names in the forecast error file to the bus names in the network file
     # Note: These names are matched as "strings starting with...", so e.g. "GB 1" also matches "GB 10", "GB 11", etc.
     # which is why these must NOT be repeated, else the same forecast errors will be applied to these buses multiple times
     # TODO check again with the merged model, might require some adjustments
     "AT":
-      - "AT00"
+    - "AT00"
     "BE":
-      - "BE00"
-      - "BEIOH01"
-      - "BEOH001"
+    - "BE00"
+    - "BEIOH01"
+    - "BEOH001"
     "CH":
-      - "CH00"
+    - "CH00"
     "CZ":
-      - "CZ00"
+    - "CZ00"
     "DE":
-      - "DE00"
-      - "DEOH001"
-      - "DEOH002"
-      - "DEOR001"
+    - "DE00"
+    - "DEOH001"
+    - "DEOH002"
+    - "DEOR001"
     "DK1":
-      - "DKE1"
-      - "DKE0R01"
+    - "DKE1"
+    - "DKE0R01"
     "DK2":
-      - "DKW1"
-      - "DKW0R01"
+    - "DKW1"
+    - "DKW0R01"
     "ES":
-      - "ES00"
-      - "ESOH001"
-      - "ESOH003"
-      - "ESOH002"
+    - "ES00"
+    - "ESOH001"
+    - "ESOH003"
+    - "ESOH002"
     "FI":
-      - "FI00"
-      - "FIOH001"
+    - "FI00"
+    - "FIOH001"
     "FR":
-      - "FR00"
-      - "FR15"
-      - "FROH001"
-      - "FROH002"
-      - "FROH003"
+    - "FR00"
+    - "FR15"
+    - "FROH001"
+    - "FROH002"
+    - "FROH003"
     "GB":
-      - "GB 1" # also matches "GB 10", "GB 11", etc.
-      - "GB 2" # also matches "GB 20", "GB 21", etc.
-      - "GB 3" # also matches "GB 31"
-      - "GB 4"
-      - "GB 5"
-      - "GB 6"
-      - "GB 7"
-      - "GB 8"
-      - "GB 9"
+    - "GB B0"
+    - "GB B13-SC1"
+    - "GB B14"
+    - "GB B1a-B0"
+    - "GB B2-B1a"
+    - "GB B3b"
+    - "GB B4-B2-B3b"
+    - "GB B5-B4"
+    - "GB B6-B5"
+    - "GB B7a-B6"
+    - "GB B8-NW3-B7a"
+    - "GB B9-B8-NW3"
+    - "GB B9-SW1-EC5-B13-LE1-SC1.5"
+    - "GB EC5"
+    - "GB LE1-B14-SC3-SC1.5"
+    - "GB LE1-SC2-SC3"
+    - "GB NW1"
+    - "GB NW2-NW1"
+    - "GB NW3-NW2"
+    - "GB SC1-B13"
+    - "GB SC1.5-B13-LE1"
+    - "GB SC2-SC3"
+    - "GB SC3-SC2"
+    - "GB SW1-B"
     "HR":
-      - "HR00"
-      - "HROH001"
+    - "HR00"
+    - "HROH001"
     "IE":
-      - "IE00"
-      - "IEOH001"
+    - "IE00"
+    - "IEOH001"
     "ITCA":
-      - "ITCA"
+    - "ITCA"
     "ITCN":
-      - "ITCN"
-      - "ITCNOR1"
+    - "ITCN"
+    - "ITCNOR1"
     "ITCS":
-      - "ITCS"
-      - "ITCSOR1"
+    - "ITCS"
+    - "ITCSOR1"
     "ITN1":
-      - "ITN1"
-      - "ITN1OR1"
+    - "ITN1"
+    - "ITN1OR1"
     "ITS1":
-      - "ITS1"
-      - "ITS1OR1"
+    - "ITS1"
+    - "ITS1OR1"
     "ITSA":
-      - "ITSA"
-      - "ITSAOR1"
+    - "ITSA"
+    - "ITSAOR1"
     "ITSI":
-      - "ITSI"
-      - "ITSIOR1"
+    - "ITSI"
+    - "ITSIOR1"
     "NL":
-      - "NL00"
-      - "NLOR001"
-      - "NLOH001"
+    - "NL00"
+    - "NLOR001"
+    - "NLOH001"
     "NO1":
-      - "NOS0"
-      - "NOSOH01"
-      - "NOSOH02"
-      - "NOSOR01"
+    - "NOS0"
+    - "NOSOH01"
+    - "NOSOH02"
+    - "NOSOR01"
     "NO3":
-      - "NOM1"
-      - "NOMOH01"
+    - "NOM1"
+    - "NOMOH01"
     "NO4":
-      - "NON1"
-      - "NONOH01"
+    - "NON1"
+    - "NONOH01"
     "PL":
-      - "PL00"
-      - "PLOH001"
+    - "PL00"
+    - "PLOH001"
     "PT":
-      - "PT00"
-      - "PTOH001"
+    - "PT00"
+    - "PTOH001"
     "SE1":
-      - "SE01"
-      - "SEOR001"
+    - "SE01"
+    - "SEOR001"
     "SE2":
-      - "SE02"
-      - "SEOH001"
+    - "SE02"
+    - "SEOH001"
     "SE3":
-      - "SE03"
-      - "SEOH002"
+    - "SE03"
+    - "SEOH002"
     "SE4":
-      - "SE04"
-      - "SEOH003"
+    - "SE04"
+    - "SEOH003"
     # not part of the TYNDP
     # "NO2":
     # missing forecast errors
