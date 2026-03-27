@@ -33,7 +33,7 @@ import os
 import re
 import sys
 from functools import partial
-from typing import Any
+from typing import Any, Callable
 
 import linopy
 import numpy as np
@@ -53,6 +53,7 @@ from scripts._helpers import (
     set_scenario_config,
     update_config_from_wildcards,
 )
+from scripts.fbmc import FBMCConstraint
 
 logger = logging.getLogger(__name__)
 
@@ -1307,6 +1308,7 @@ def extra_functionality(
     planning_horizons: str | None = None,
     offshore_zone_trajectories_fn: str | None = None,
     renewable_carriers_tyndp: list[str] = [],
+    extra_constraints: list[Callable[[pypsa.Network, pd.DatetimeIndex], None]] = [],
 ) -> None:
     """
     Add custom constraints and functionality.
@@ -1323,6 +1325,7 @@ def extra_functionality(
         Path to the file containing the offshore zone potentials trajectories
     renewable_carriers_tyndp : list[str], optional
         List of TYNDP renewable carriers
+    *additional_constraints
 
     Collects supplementary constraints which will be passed to
     ``pypsa.optimization.optimize``.
@@ -1389,6 +1392,10 @@ def extra_functionality(
             offshore_zone_trajectories_fn,
             renewable_carriers_tyndp,
         )
+
+    if extra_constraints:
+        for c in extra_constraints:
+            c(n, snapshots)
 
     if n.params.custom_extra_functionality:
         source_path = n.params.custom_extra_functionality
@@ -1535,6 +1542,7 @@ def create_optimization_model(
     planning_horizons: str | None = None,
     offshore_zone_trajectories_fn: str | None = None,
     renewable_carriers_tyndp: list[str] = [],
+    extra_constraints: list[Callable[[pypsa.Network, pd.DatetimeIndex], None]] = [],
 ) -> None:
     """
     Prepare optimization problem by creating model and adding extra functionality.
@@ -1579,6 +1587,7 @@ def create_optimization_model(
         planning_horizons,
         offshore_zone_trajectories_fn,
         renewable_carriers_tyndp,
+        extra_constraints,
     )
 
 
@@ -1714,6 +1723,17 @@ if __name__ == "__main__":
                 log_fn=snakemake.log.solver,
                 mode="single",
             )
+            extra_constraints = []
+            # FBMC constraints are only applied to the dispatch model
+            if (
+                snakemake.params.scenario == "FBMC"
+                and snakemake.rule == "solve_dispatch"
+            ):
+                extra_constraints.append(
+                    FBMCConstraint.from_netcdf(
+                        snakemake.input.ptdf, snakemake.input.ram
+                    )
+                )
             create_optimization_model(
                 n,
                 config=snakemake.config,
@@ -1723,6 +1743,7 @@ if __name__ == "__main__":
                 planning_horizons=planning_horizons,
                 offshore_zone_trajectories_fn=snakemake.input.offshore_zone_trajectories,
                 renewable_carriers_tyndp=snakemake.params.renewable_carriers_tyndp,
+                extra_constraints=extra_constraints,
             )
 
             logger.info("Solving model...")
@@ -1770,6 +1791,7 @@ if __name__ == "__main__":
         n.model.print_infeasibilities()
         raise RuntimeError("Solving status 'infeasible'. Infeasibilities computed.")
 
+    # n.model.to_netcdf("model.nc")
     n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
     n.export_to_netcdf(snakemake.output.network)
 
