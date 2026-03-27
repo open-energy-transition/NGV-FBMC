@@ -425,6 +425,7 @@ rule solve_redispatch:
         # openTYNDP specific: Not used (because OH trajectories are off)
         # but keeping for consistency to be able to reuse code from the openTYNDP model
         renewable_carriers_tyndp=config["electricity"]["tyndp_renewable_carriers"],
+        scenario=lambda w: w.scenario,
     input:
         network=rules.prepare_redispatch.output.network,
         current_etys_caps=gbdispatchmodel(
