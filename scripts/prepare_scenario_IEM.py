@@ -7,6 +7,8 @@ import logging
 import re
 import pypsa
 import numpy as np
+from scripts._helpers import configure_logging
+from scripts.prepare_redispatch import load_boundary_crossings_file
 
 logger = logging.getLogger(__name__)
 
@@ -532,6 +534,60 @@ def remove_unused_carriers(n: pypsa.Network) -> pypsa.Network:
     return n
 
 
+def reorder_line_directions(
+    n: pypsa.Network, manual_boundaries_fp: str
+) -> pypsa.Network:
+    """
+    Reorders the line directions in the network to ensure that they are consistent with the specified boundaries.
+
+    The clustering algorithm does not deterministically assign the same line directions (bus0, bus1) in each run.
+    In order to align with externally calculated PTDF data, we correct the line directions at this point
+    to ensure they are consistent with the specified boundaries and therefore also between runs.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the line directions should be reordered.
+    manual_boundaries_fp : str
+        The file path to the manual boundary definitions.
+
+
+    Returns
+    -------
+    pypsa.Network
+        The network with reordered line directions.
+    """
+    # Load external boundary crossings file
+    boundaries = load_boundary_crossings_file(manual_boundaries_fp)
+
+    logger.info("Reordering line directions")
+    for comp_name, boundary, bus0, bus1 in boundaries.itertuples(index=False):
+        correct = n.c[comp_name].static.query(
+            "`bus0` == @bus0 and `bus1` == @bus1",
+            local_dict={"bus0": bus0, "bus1": bus1},
+        )
+        switched = n.c[comp_name].static.query(
+            "`bus0` == @bus0 and `bus1` == @bus1",
+            local_dict={"bus0": bus1, "bus1": bus0},
+        )
+
+        if correct.empty and switched.empty:
+            raise ValueError(
+                f"Expected {comp_name} between {bus0} and {bus1} but None found in the network. "
+                f"Check whether the {comp_name} is missing or whether the manual boundary definition is incorrect."
+            )
+        elif not switched.empty:
+            logger.info(
+                f"Switching direction of flow for {comp_name}: {switched.index.tolist()} to {bus0} -> {bus1}"
+            )
+            n.c[comp_name].static.loc[switched.index, ["bus0", "bus1"]] = (bus0, bus1)
+        else:
+            # Correctly oriented, nothing to do
+            pass
+
+    return n
+
+
 def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
     """
     Patches the bus names to have infinite capacity with p_nom_extendable=False for consistency across scenarios.
@@ -563,6 +619,45 @@ def patch_EU_fuel_generators(n: pypsa.Network) -> pypsa.Network:
         "`bus` in @fuel_buses", local_dict={"fuel_buses": idx}
     ).index
     n.remove("Store", stores_idx)
+
+    # Negligible contributions -> model simplification by removing these components
+    idx = n.c.links.static.query(
+        "`index`.str.contains('EU solid biomass biomass to liquid CC') or "
+        "`index`.str.contains('EU solid biomass biogas to liquid-2040')"
+    ).index
+    if len(idx) > 0:
+        logger.info(f"Removing links as model simplification: {idx}")
+        n.remove("Link", idx)
+
+    return n
+
+
+def adjust_gb_biomass_costs(n: pypsa.Network) -> pypsa.Network:
+    """
+    Adjusts the costs for biomass generators in GB to match the assumptions in the TYNDP model.
+
+    The costs from transforming the biomass Generator-components to Link-components
+    preserves the marginal_costs. However, as the generators are attached to the model
+    wide EU solid biomass bus, the fuel costs need to be reduced to avoid double counting
+    of fuel costs for biomass in GB in the model.
+
+    The costs are set to a small value, whilst the fuel costs are now accounted for through
+    the EU solid biomass bus.
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The network for which the biomass generator costs should be adjusted.
+    """
+
+    # Biomass generators to be affected
+    idx = n.c.links.static.query(
+        "carrier == 'solid biomass' and bus1.str.startswith('GB ')"
+    ).index
+
+    logger.info(f"Adjusting costs for GB biomass generators: {idx}")
+
+    n.c.links.static.loc[idx, "marginal_cost"] = 0.1
 
     return n
 
@@ -630,6 +725,7 @@ if __name__ == "__main__":
             Path(__file__).stem,
             planning_horizons="2040",
         )
+    configure_logging(snakemake)
 
     # Map from configfile
     carrier_map = snakemake.params.carrier_map
@@ -691,6 +787,8 @@ if __name__ == "__main__":
     n_merged = remove_unused_carriers(n_merged)
 
     n_merged = patch_EU_fuel_generators(n_merged)
+
+    n_merged = adjust_gb_biomass_costs(n_merged)
 
     # After merging we get rid of all attributes that are potential outputs from the model
     # Due to https://github.com/PyPSA/PyPSA/issues/1606 we do this on the individual networks before the merge
