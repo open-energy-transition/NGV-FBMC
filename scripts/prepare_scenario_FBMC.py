@@ -11,6 +11,7 @@ Outputs a prepared model for solving as optimal dispatch.
 
 import logging
 from pathlib import Path
+from scripts.fbmc import FBMCConstraint
 
 import pypsa
 
@@ -35,9 +36,11 @@ if __name__ == "__main__":
         f"Flow-based market coupling (FBMC) - {snakemake.wildcards.planning_horizons}"
     )
 
-    # No modifications required for the FBMC network
-    # The constraints are applied during the solving step
-    # so the network can just be written out again here without modifications
+    # Align the snapshots between the FBMC data and the network to save them for later inspection/use
+    fbmc_constraint = FBMCConstraint.from_netcdf(
+        snakemake.input["ptdf"], snakemake.input["ram"]
+    ).align_snapshots(n.snapshots)
+    fbmc_constraint.to_netcdf(snakemake.output["ptdf"], snakemake.output["ram"])
 
     # Doesn't hurt
     n.consistency_check(strict=None)

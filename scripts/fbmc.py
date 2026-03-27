@@ -40,6 +40,11 @@ class FBMCConstraint:
         self.ptdf.to_netcdf(ptdf)
         self.ram.to_netcdf(ram)
 
+    def align_snapshots(self, snapshots: pd.DatetimeIndex) -> Self:
+        ptdf = self.ptdf.reindex(snapshot=snapshots, method="ffill")
+        ram = self.ram.reindex(snapshot=snapshots, method="ffill")
+        return FBMCConstraint(ptdf, ram)
+
     @classmethod
     def from_netcdf(cls, ptdf: str, ram: str) -> Self:
         return cls(xr.open_dataarray(ptdf), xr.open_dataarray(ram))
@@ -59,11 +64,8 @@ class FBMCConstraint:
         to sum to zero, but the PTDF assumption might also have been for consumption
         rather than generation and then all lhs signs need to be inverted.
         """
-        ptdf = self.ptdf.sel(snapshot=snapshots)
-        ram = self.ram.sel(snapshot=snapshots)
-
-        ptdf_gb = ptdf.sel(name="gb")
-        ptdf_ic = ptdf.drop_sel(name="gb")
+        ptdf_gb = self.ptdf.sel(name="gb")
+        ptdf_ic = self.ptdf.drop_sel(name="gb")
 
         m = n.model
 
@@ -74,6 +76,9 @@ class FBMCConstraint:
         net_position_gb = -net_positions_ic.sum("name")
 
         m.add_constraints(
-            net_position_gb * ptdf_gb + (net_positions_ic * ptdf_ic).sum("name") <= ram,
+            net_position_gb * ptdf_gb + (net_positions_ic * ptdf_ic).sum("name")
+            <= self.ram,
             name="FBMC",
         )
+
+        logger.info("Adding FBMC constraint to the network.")

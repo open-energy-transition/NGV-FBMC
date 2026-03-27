@@ -263,8 +263,8 @@ rule retrieve_data_FBMC:
     input:
         flow_based_constraints="data/NGV-FBMC/primary/20260326/flow_based_constraints_{planning_horizons}.parquet",
     output:
-        ptdf="resources/base/fbmc/ptdf/{planning_horizons}.nc",
-        ram="resources/base/fbmc/ram/{planning_horizons}.nc",
+        ptdf="data/NGV-FBMC/primary/20260326/ptdf/{planning_horizons}.nc",
+        ram="data/NGV-FBMC/primary/20260326/ram/{planning_horizons}.nc",
     log:
         "logs/retrieve_data_FBMC/{planning_horizons}.log",
     run:
@@ -282,10 +282,12 @@ rule prepare_scenario_FBMC:
         "Preparing model for flow-based scenario based on combined model for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        ptdf="resources/base/fbmc/ptdf/{planning_horizons}.nc",
-        ram="resources/base/fbmc/ram/{planning_horizons}.nc",
+        ptdf=rules.retrieve_data_FBMC.output.ptdf,
+        ram=rules.retrieve_data_FBMC.output.ram,
     output:
         model="resources/base/networks/FBMC/{planning_horizons}.nc",
+        ptdf="resources/base/fbmc/ptdf/{planning_horizons}.nc",
+        ram="resources/base/fbmc/ram/{planning_horizons}.nc",
     log:
         "logs/prepare_scenario_FBMC/{planning_horizons}.log",
     script:
@@ -336,11 +338,11 @@ rule solve_dispatch:
         network="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
         ptdf=branch(
             lambda wildcards: wildcards.scenario == "FBMC",
-            rules.retrieve_data_FBMC.output.ptdf,
+            rules.prepare_scenario_FBMC.output.ptdf,
         ),
         ram=branch(
             lambda wildcards: wildcards.scenario == "FBMC",
-            rules.retrieve_data_FBMC.output.ram,
+            rules.prepare_scenario_FBMC.output.ram,
         ),
         # TYNDP specific
         offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
@@ -457,8 +459,6 @@ rule solve_redispatch:
         parallel_solving=1,
     shadow:
         config["run"]["use_shadow_directory"]
-    log:
-        "logs/solve_redispatch/{scenario}/{planning_horizons}.log",
     script:
         "scripts/solve_network.py"
 
