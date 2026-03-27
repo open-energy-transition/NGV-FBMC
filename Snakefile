@@ -261,19 +261,19 @@ rule retrieve_data_FBMC:
     message:
         "Retrieving data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
-        flow_based_constraints="data/NGV-FBMC/flow_based_constraints_{planning_horizons}.parquet"
+        flow_based_constraints="data/NGV-FBMC/primary/20260326/flow_based_constraints_{planning_horizons}.parquet",
     output:
-        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.nc",
-        ram="data/NGV-FBMC/ram/{planning_horizons}.nc",
+        ptdf="resources/base/fbmc/ptdf/{planning_horizons}.nc",
+        ram="resources/base/fbmc/ram/{planning_horizons}.nc",
     log:
         "logs/retrieve_data_FBMC/{planning_horizons}.log",
     run:
         from scripts.fbmc import FBMCConstraint
 
         (
-            FBMCConstraint
-            .from_parquet(input.flow_based_constraints)
-            .to_netcdf(output.ptdf, output.ram)
+            FBMCConstraint.from_parquet(input.flow_based_constraints).to_netcdf(
+                output.ptdf, output.ram
+            )
         )
 
 
@@ -282,8 +282,8 @@ rule prepare_scenario_FBMC:
         "Preparing model for flow-based scenario based on combined model for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
         model=rules.prepare_scenario_IEM.output.model,
-        ptdf="data/NGV-FBMC/ptdf/{planning_horizons}.nc",
-        ram="data/NGV-FBMC/ram/{planning_horizons}.nc",
+        ptdf="resources/base/fbmc/ptdf/{planning_horizons}.nc",
+        ram="resources/base/fbmc/ram/{planning_horizons}.nc",
     output:
         model="resources/base/networks/FBMC/{planning_horizons}.nc",
     log:
@@ -336,11 +336,11 @@ rule solve_dispatch:
         network="resources/dispatch/networks/{scenario}/{planning_horizons}.nc",
         ptdf=branch(
             lambda wildcards: wildcards.scenario == "FBMC",
-            rules.prepare_scenario_FBMC.input.ptdf,
+            rules.retrieve_data_FBMC.output.ptdf,
         ),
         ram=branch(
             lambda wildcards: wildcards.scenario == "FBMC",
-            rules.prepare_scenario_FBMC.input.ram,
+            rules.retrieve_data_FBMC.output.ram,
         ),
         # TYNDP specific
         offshore_zone_trajectories=rules.run_phase01_model_as_rule.output.offshore_zone_trajectories,
