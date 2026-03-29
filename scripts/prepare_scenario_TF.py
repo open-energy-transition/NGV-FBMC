@@ -106,6 +106,9 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
             "loads": "p_set",
         }[component_type]
 
+        # Find all components of the given type and carrier
+        # at the given bus or sub-buses with the same starting name
+        # e.g. for bus "GB SC1.5-B13-LE1" also "GB SC1.5-B13-LE1 EV", "GB SC1.5-B13-LE1 H2 demand"
         cols = (
             n.components[component_type]
             .static.loc[
@@ -181,6 +184,58 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
                 new_p.index, new_p.columns
             ] = new_p
 
+        if component_type == "loads":
+            # Patch:
+            # In some cases increasing the load by the error can lead to the "Load" component
+            # having a higher demand that can be supplied by a supplying "Link" component,
+            # where the load is not directly attached to the main nodal "Bus", but has a "Bus"
+            # dedicated to the load type to distinguish it from other load types
+            # and enable modelling of DSR. In this case we need to increase the maximum
+            # power that this precursor "Link" component can supply to the load, otherwise the model
+            # will be infeasible for this Load
+
+            # Find associated "Link" components - components that connect to the bus of the load
+            # and start from the respective "main" bus, i.e. the bus name without any suffixes
+            associated_links = {
+                load: n.c.links.static.query(
+                    "`bus0` == @bus and `bus1` == @load_bus",
+                    local_dict={
+                        "bus": bus,
+                        "load_bus": n.c.loads.static.loc[load]["bus"],
+                    },
+                ).index.item()
+                for load in dynamic_elements
+            }
+
+            # Mappings for between the links and the loads
+            associated_loads = {v: k for k, v in associated_links.items()}
+            associated_max_p_set = n.c.loads.dynamic.p_set[
+                associated_loads.values()
+            ].max()
+            links_p_nom = n.c.links.static.loc[list(associated_links.values()), "p_nom"]
+
+            # Replace the load names with the associated link names in the index
+            associated_max_p_set.index = [
+                associated_links[load] for load in associated_max_p_set.index
+            ]
+
+            # Determine new limits: Either current p_nom or the higher p_set from the load, whichever is higher
+            links_new_p = pd.concat(
+                [
+                    associated_max_p_set.rename("max_p_set"),
+                    links_p_nom.rename("current_p_nom"),
+                ],
+                axis=1,
+            ).max(axis=1)
+
+            if (links_new_p > links_p_nom).any():
+                logger.info(
+                    f"Updating p_nom for links {links_new_p[links_new_p > links_p_nom].index.tolist()} to accommodate increased load due to forecast errors"
+                )
+
+            # Set new limits
+            n.c.links.static.loc[links_new_p.index, "p_nom"] = links_new_p
+
     return n
 
 
@@ -190,7 +245,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             Path(__file__).stem,
-            planning_horizons=2030,
+            planning_horizons=2040,
         )
     configure_logging(snakemake)
 
