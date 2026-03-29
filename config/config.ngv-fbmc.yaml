@@ -233,6 +233,7 @@ solving:
     threads: 8
     gurobi-default:
       BarConvTol: 1.e-6
+      IISMethod: 1
     cplex-default:
       barrier.convergetol: 1.e-6
 
@@ -350,7 +351,7 @@ forecast_errors:
     - "GB SC1.5-B13-LE1"
     - "GB SC2-SC3"
     - "GB SC3-SC2"
-    - "GB SW1-B"
+    - "GB SW1-B9"
     "HR":
     - "HR00"
     - "HROH001"
