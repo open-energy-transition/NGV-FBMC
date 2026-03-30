@@ -135,12 +135,21 @@ def restrict_electricity_flows(
             f"Check the regex patterns and the column names in the file."
         )
 
-    n.components.links.dynamic["p_min_pu"][line_limits.columns] = (
-        np.minimum(lower_limits, upper_limits)
-    ).clip(-1, 1)
-    n.components.links.dynamic["p_max_pu"][line_limits.columns] = (
-        np.maximum(lower_limits, upper_limits)
-    ).clip(-1, 1)
+    # Use the existing p_min_pu and p_max_pu values if they are more binding
+    # than the new limits (the limits can not increase the availability of the interconnectors),
+    # only when the new limits are more restricting than the existing ones
+    # (market behaviour imposing tighter limits than the physical ones) apply the new limits.
+    new_p_min_pu = np.minimum(lower_limits, upper_limits).clip(
+        lower=n.c.links.dynamic.p_min_pu[line_limits.columns],
+        upper=n.c.links.dynamic.p_max_pu[line_limits.columns],
+    )
+    new_p_max_pu = np.maximum(lower_limits, upper_limits).clip(
+        lower=n.c.links.dynamic.p_min_pu[line_limits.columns],
+        upper=n.c.links.dynamic.p_max_pu[line_limits.columns],
+    )
+
+    n.components.links.dynamic["p_min_pu"][line_limits.columns] = new_p_min_pu
+    n.components.links.dynamic["p_max_pu"][line_limits.columns] = new_p_max_pu
 
     return n
 
