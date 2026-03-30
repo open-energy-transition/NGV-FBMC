@@ -5,33 +5,16 @@
 [workspace]
 authors = ["Contributors to NGV-FBMC"]
 channels = ["conda-forge", "bioconda", "gurobi"]
-name = "pypsa-eur"
-platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+name = "NGV-FBMC"
+platforms = ["win-64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
 
-reset = """bash -c '
-    read -p "Do you really wanna continue? This will remove all contents of \
-logs, resources, benchmarks, results, and .snakemake directories except \
-.gitkeep files (config/config.yaml will not be deleted) (y/n): " ans && \
-    case $ans in \
-        [Yy]*) \
-            for dir in ./logs ./resources ./benchmarks ./results ./.snakemake; do \
-                find "$dir" -mindepth 1 ! -name ".gitkeep" -delete 2>/dev/null || true; \
-            done; \
-            echo "Reset completed.";; \
-        [Nn]*) \
-            echo "Reset cancelled.";; \
-        *) \
-            echo "Please answer yes or no."; exit 1;; \
-    esac'
-"""
-
 update-dags = """
 	dot -c && \
-	snakemake results/networks/base_s_128_elec_.nc -F --dag | sed -n "/digraph/,/}/p" | dot -Tpng -o doc/img/intro-workflow.png && \
-	snakemake --rulegraph -F | sed -n "/digraph/,/}/p" | dot -Tpng -o doc/img/workflow.png
+	snakemake results/redispatch/networks/SQ/2040.nc -F --dag | dot -Tpng -o doc/img/dag_redispatch-SQ-2040.png && \
+	snakemake --rulegraph -F | sed -n "/digraph/,/}/p" | dot -Tpng -o doc/img/rulegraph_all.png
 """
 
 [dependencies]
@@ -66,7 +49,6 @@ numpy = ">=1.26.4"
 openpyxl = ">=3.1.5"
 pandas = ">=2.1"
 plotly = ">=6.4.0"
-powerplantmatching = ">=0.5.15"
 pydantic = ">=2"
 python-dotenv = ">=1.0"
 pre-commit = ">=4.3.0"
@@ -86,7 +68,7 @@ scipy = ">=1.16.3"
 seaborn = ">=0.13.2"
 shapely = ">=2.0"
 snakemake-executor-plugin-cluster-generic = ">=1.0.9"
-snakemake-minimal = ">=9"
+snakemake-minimal = ">=9.16.3"
 snakemake-storage-plugin-http = ">=0.3"
 tenacity = ">=9.1.2"
 tqdm = ">=4.67.1"
@@ -95,76 +77,13 @@ xarray = ">=2024.3.0,<2025.7.0"
 xlrd = ">=2.0.2"
 yaml = ">=0.2.5"
 snakemake-storage-plugin-cached-http = ">=0.2.1"
-pandera = ">=0.28.1"
-natsort = ">=8.4.0"
 snakemake-logger-plugin-pypsa = ">=0.1.0"
 
 [target.unix.dependencies]
 snakemake-executor-plugin-slurm = ">=1.9.2"
 
-[feature.doc.tasks.build-docs]
-args = ["dir", {"arg" = "output", "default" = "html"}]
-cmd = "dot -c && sphinx-build -T -b {{ output }} doc {{ dir }}/{{ output }} "
-
-[feature.doc.dependencies]
-atlite = "==0.4.1"
-cartopy = "==0.25.0"
-dask = "==2025.11.0"
-descartes = "==1.1.0"
-fiona = "==1.10.1"
-graphviz = "==13.1.2"
-matplotlib = "==3.10.7"
-memory_profiler = "==0.61.0"
-myst-parser = "==4.0.1"
-powerplantmatching = "==0.7.1"
-pydot = "==4.0.1"
-pypsa = ">=1.1.2,<2"
-pytables = "==3.10.2"
-python = "==3.12.12"
-pyyaml = "==6.0.3"
-requests = "==2.32.5"
-scikit-learn = "==1.7.2"
-seaborn = "==0.13.2"
-sphinx = "==8.2.3"
-sphinx-book-theme = "==1.1.4"
-sphinx-design = "==0.6.1"
-sphinx-jsonschema = "==1.19.2"
-sphinxcontrib-bibtex = "==2.6.5"
-tabula-py = "==2.7.0"
-tenacity = "==9.1.2"
-tsam = "==2.3.9"
-
-[feature.test.tasks]
-
-integration-tests = """
-    snakemake -call --configfile config/test/config.tyndp.yaml &&
-	snakemake -call --configfile config/config.tyndp.yaml -n &&
-    snakemake -call solve_elec_networks --configfile config/test/config.electricity.yaml &&
-    snakemake -call --configfile config/test/config.overnight.yaml &&
-    snakemake -call --configfile config/test/config.myopic.yaml &&
-    snakemake -call resources/test-elec-clusters/networks/base_s_adm.nc --configfile config/test/config.clusters.yaml &&
-    snakemake -call --configfile config/test/config.scenarios.yaml -n &&
-    snakemake -call plot_power_networks_clustered --configfile config/test/config.tyndp.yaml &&
-    echo "All tests completed successfully."
-"""
-clean-tests = """
-    snakemake -call --configfile config/test/config.tyndp.yaml --delete-all-output ;
-    snakemake -call --configfile config/config.tyndp.yaml -n --delete-all-output ;
-    snakemake -call solve_elec_networks --configfile config/test/config.electricity.yaml --delete-all-output ;
-    snakemake -call --configfile config/test/config.overnight.yaml --delete-all-output ;
-    snakemake -call --configfile config/test/config.myopic.yaml --delete-all-output ;
-    snakemake -call resources/test-elec-clusters/networks/base_s_adm.nc --configfile config/test/config.clusters.yaml --delete-all-output ;
-    snakemake -call --configfile config/test/config.scenarios.yaml -n --delete-all-output ;
-    snakemake -call plot_power_networks_clustered --configfile config/test/config.tyndp.yaml --delete-all-output ;
-	echo "All test outputs have been cleaned up."
-"""
-unit-tests = "pytest test"
-
-all-tests = {depends-on = ["integration-tests", "clean-tests", "unit-tests"]}
-
-[feature.test.dependencies]
-pytest = ">=8.4.2"
+[feature.dev.dependencies]
+reuse = "*"
 
 [environments]
-doc = { features = ["doc"], no-default-feature = true }
-test = ["test"]
+dev = ["dev"]
