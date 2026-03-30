@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: NGV-FBMC contributors
+#
+# SPDX-License-Identifier: MIT
+
 # External boundary definitions for the redispatch model
 # These were manually determined and are used in the model
 # to align the automatically determined boundaries with the

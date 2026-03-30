@@ -1,4 +1,5 @@
-# SPDX-FileCopyrightText: : gb-dispatch-model contributors
+# SPDX-FileCopyrightText: NGV-FBMC contributors
+# SPDX-FileCopyrightText: gb-dispatch-model contributors
 #
 # SPDX-License-Identifier: MIT
 import logging

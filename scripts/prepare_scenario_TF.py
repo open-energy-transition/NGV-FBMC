@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Contributors to NGV-FBMC project
+# SPDX-FileCopyrightText: NGV-FBMC contributors
 #
 # SPDX-License-Identifier: MIT
 """

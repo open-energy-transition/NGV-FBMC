@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: NGV-FBMC contributors
+#
+# SPDX-License-Identifier: MIT
+
+
 configfile: "config/config.default.yaml"
 configfile: "config/plotting.default.yaml"
 configfile: "config/benchmarking.default.yaml"

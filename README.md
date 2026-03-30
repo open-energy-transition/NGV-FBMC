@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: NGV-FBMC contributors <https://github.com/open-energy-transition/NGV-FBMC>
+SPDX-License-Identifier: MIT
+-->
+
 # FBMC implementation on GB model using openTYNDP data for RoE
 
 > Description is currently being expanded.

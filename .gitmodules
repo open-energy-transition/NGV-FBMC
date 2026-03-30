@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: NGV-FBMC contributors
+#
+# SPDX-License-Identifier: MIT
+
 [submodule "modules/gb-dispatch-model"]
 	path = modules/gb-dispatch-model
 	url = https://github.com/open-energy-transition/gb-dispatch-fbmc.git

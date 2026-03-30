@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: NGV-FBMC contributors
+#
+# SPDX-License-Identifier: MIT
+
 # Contains additional configuration options that overwrite the defaults
 # coming from the NGV-IEM model
 
