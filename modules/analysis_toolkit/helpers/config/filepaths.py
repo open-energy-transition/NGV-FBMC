@@ -2,12 +2,12 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent.parent.parent.parent
 
-RESULTS_DIR = f"{ROOT_DIR}/results/GB/results_13032026"
+RESULTS_DIR = f"{ROOT_DIR}/results/results_20260330"
 
 IEM_SCENARIO = "IEM"
 SQ_SCENARIO = "SQ"
 TF_SCENARIO = "TF"
-IEM_FB_SCENARIO = "IEM"  # Todo: update when IEM_FB scenario is available
+IEM_FB_SCENARIO = "FBMC"  # Todo: update when IEM_FB scenario is available
 
 DISPATCH_DIR_NAME = "dispatch"
 REDISPATCH_DIR_NAME = "redispatch"
@@ -26,5 +26,5 @@ CONFIG_DIR = f"{ROOT_DIR}/modules/analysis_toolkit/helpers/config"
 
 get_boundaries_fp = lambda: f"{CONFIG_DIR}/boundaries.yaml"
 get_capacities_fp = lambda year: f"{CONFIG_DIR}/capacities_{year}.yaml"
-get_fb_constraints_fp = lambda year: f"{CONFIG_DIR}/flow_based_constraints_{year}_version_20260313.parquet"
+get_fb_constraints_fp = lambda year: f"{CONFIG_DIR}/flow_based_constraints_{year}_version_20260326.parquet"
 get_etys_boundaries_geopandas_fp = lambda: f"{CONFIG_DIR}/gb-etys-boundaries.zip"

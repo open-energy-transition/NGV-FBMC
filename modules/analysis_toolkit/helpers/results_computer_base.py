@@ -18,9 +18,18 @@ class ResultsComputerBase:
     Callers can use: res.revenue.iem(**kwargs), res.revenue.diff(), res.revenue.sq(), res.revenue(n, **kwargs)
     """
 
-    def __init__(self, year: int):
+    SNAPSHOT_FILTER_CARRIER = "AC"
+    SNAPSHOT_FILTER_SQ_THRESHOLD = 2900.0
+    SNAPSHOT_FILTER_IEM_THRESHOLD = 2900.0
+
+    def __init__(self, year: int, apply_snapshot_filter: bool = False):
         self.year = year
-        self.ns: NetworkSelector = NetworkSelector(self.get_network_dict())
+        network_dict = self.get_network_dict()
+
+        if apply_snapshot_filter:
+            network_dict = self._apply_snapshot_filter(network_dict)
+
+        self.ns: NetworkSelector = NetworkSelector(network_dict)
         self.groupby: list[GROUPBY_OPTIONS] = GLOBAL_GROUPBY
         self.groupby_time: bool = False
 
@@ -32,6 +41,45 @@ class ResultsComputerBase:
     def change_computation_settings(self, groupby: list[GROUPBY_OPTIONS], groupby_time: bool):
         self.groupby = groupby
         self.groupby_time = groupby_time
+
+    @staticmethod
+    def _get_snapshots_exceeding_threshold(n: pypsa.Network, carrier: str, threshold: float) -> pd.Index:
+        """Return snapshots where at least one bus with given carrier has marginal_price > threshold."""
+        buses = n.buses[n.buses.carrier == carrier].index
+        if buses.empty:
+            return pd.DatetimeIndex([])
+        prices = n.buses_t.marginal_price[buses]
+        return prices.index[(prices > threshold).any(axis=1)]
+
+    def _apply_snapshot_filter(
+            self, network_dict: dict[str, pypsa.Network]
+    ) -> dict[str, pypsa.Network]:
+        """Apply snapshot filtering to all networks.
+
+        Args:
+            network_dict: Dictionary of loaded networks
+        Returns:
+            Dictionary with filtered networks (originals are copied, not modified)
+        """
+        carrier = self.SNAPSHOT_FILTER_CARRIER
+        sq_threshold = self.SNAPSHOT_FILTER_SQ_THRESHOLD
+        iem_threshold = self.SNAPSHOT_FILTER_IEM_THRESHOLD
+
+        to_drop_sq = self._get_snapshots_exceeding_threshold(
+            network_dict["n_sq_dispatch"], carrier, sq_threshold
+        )
+        to_drop_iem = self._get_snapshots_exceeding_threshold(
+            network_dict["n_iem_dispatch"], carrier, iem_threshold
+        )
+        to_drop = to_drop_sq.union(to_drop_iem)
+
+        filtered = {}
+        for name, n in network_dict.items():
+            m = n.copy()
+            keep = m.snapshots.difference(to_drop)
+            m.set_snapshots(keep)
+            filtered[name] = m
+        return filtered
 
     # small helpers used by the bound-metric object
     def _sq_dispatch(self, func: Callable[[pypsa.Network], Any]):
@@ -65,7 +113,8 @@ class ResultsComputerBase:
         return pd.concat({
             'sq': self._sq_dispatch(func),
             'iem': self._iem_dispatch(func),
-            'iem_fb': self._iem_fb_dispatch(func)
+            'iem_fb': self._iem_fb_dispatch(func),
+            'diff: iem-sq': self._iem_dispatch(func) - self._sq_dispatch(func)
         }, axis=1)
 
     def _compare_redispatch(self, func: Callable[[pypsa.Network], Any]):
