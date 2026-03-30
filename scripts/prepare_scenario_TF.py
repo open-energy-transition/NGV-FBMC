@@ -203,7 +203,7 @@ def add_forecast_errors(n: pypsa.Network, error_fp: str, config: dict) -> pypsa.
                         "bus": bus,
                         "load_bus": n.c.loads.static.loc[load]["bus"],
                     },
-                ).index.item()
+                ).index[0]
                 for load in dynamic_elements
             }
 
