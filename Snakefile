@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+from shutil import move 
 
 configfile: "config/config.default.yaml"
 configfile: "config/plotting.default.yaml"
@@ -262,9 +263,27 @@ rule prepare_scenario_SQ:
         "scripts/prepare_scenario_SQ.py"
 
 
+rule fetch_data_FBMC:
+    message: 
+        "Fetching data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
+    input:
+        url = lambda wildcards: {
+            '2030':storage("https://drive.google.com/uc?export=download&id=1QxrGP8YrR9B5hOIt4j7Ir3jdlhcNeVgg"),
+            '2040':storage("https://drive.google.com/uc?export=download&id=1meF_7g4fEZ3Jx_JBBSzo_o6LaMhQmOYc")
+        }[wildcards.planning_horizons]
+    output:
+        "data/NGV-FBMC/primary/20260326/flow_based_constraints_{planning_horizons}.parquet"
+    resources:
+        mem_mb=5000,
+    retries: 2
+    run:
+        from shutil import move
+        move(input.url, output[0])
+        
+
 rule retrieve_data_FBMC:
     message:
-        "Retrieving data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
+        "Retrieving and preparing data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
         flow_based_constraints="data/NGV-FBMC/primary/20260326/flow_based_constraints_{planning_horizons}.parquet",
     output:
