@@ -31,7 +31,7 @@ class ResultsComputer(ResultsComputerBase):
             groupby_time=self.groupby_time,
             groupby=self.groupby). \
             drop(["DC"], level="carrier") \
-            .xs("GB", level="country")
+            .xs("GB", level="country").drop("GBNI", level="bus")
         assert np.allclose(net_position_gb.sum(axis=0), self._get_gb_interconnector_flows(n).sum(), atol=1), \
             "Generation - demand in GB should be approximately equal to the net flow on the interconnectors (with a tolerance of 1 MW, to account for small numerical differences)."
         return net_position_gb.sum(axis=0)
@@ -54,6 +54,18 @@ class ResultsComputer(ResultsComputerBase):
         """Flows on the boundary lines, which is an approximation to the actual line loading."""
         link_flows = self._get_gb_interconnector_flows(n=n)
         ptdf = get_fb_constraints(year=self.year).set_index(["snapshot", "boundary", "direction"])
+        full_index = pd.MultiIndex.from_product(
+            [n.snapshots,
+             ptdf.index.get_level_values("boundary").unique(),
+             ptdf.index.get_level_values("direction").unique()],
+            names=["snapshot", "boundary", "direction"]
+        )
+        ptdf = (
+            ptdf.reindex(full_index)
+            .sort_index()
+            .groupby(level=["boundary", "direction"])
+            .ffill()
+        )
         ptdf.columns.name = "name"
         # contribution from link flows to the boundary loading, based on the ptdf values
         boundary_flows = link_flows.T.mul(ptdf)
@@ -542,16 +554,25 @@ class ResultsComputer(ResultsComputerBase):
 
 
 if __name__ == "__main__":
-    rc = ResultsComputer(
-        year=2040,
-        apply_snapshot_filter= True
-        )
-    #rc.constraint_costs.iem_redispatch()
-    #rc.congestion_income.compare_dispatch()
-    final_surplus_df = rc.storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-    congestion_income_df = rc.congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+    from modules.analysis_toolkit.analyzer import ResultsComputer
+    from modules.analysis_toolkit.helpers.plotting import TimeSeriesPlot, HistogramPlot, BarChartPlot, WaterfallPlot
 
-    welfare_comparison = rc.welfare_system.compare_dispatch()
+    study_years = [2030, 2040]
+    rc = {
+        year: ResultsComputer(
+        year=year,
+        apply_snapshot_filter=False
+        )
+        for year in [2030, 2040]
+    }
+
+    rc.constraint_costs.iem_redispatch()
+    rc.congestion_income.compare_dispatch()
+    final_surplus_df = rc[2030].storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+    congestion_income_df = rc[2030].congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+
+    welfare_comparison = rc[2030].welfare_system.compare_dispatch()
+
     print()
 
     # query where any of the strings in a list are contained in a column

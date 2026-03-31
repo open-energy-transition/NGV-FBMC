@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Literal
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -31,6 +31,32 @@ class TimeSeriesPlot:
         plt.title("Dispatch Flows through Interconnectors (2030)")
         plt.tight_layout()
         plt.show()
+
+    @staticmethod
+    def boundary_loading_dispatch(rc: ResultsComputer, which: Literal["ptdf", "actual"]):
+        loading = rc.boundary_loading.compare_dispatch(which=which)
+        loading["solved_by_fb"] = loading["iem"] - loading["iem_fb"]
+        boundaries = loading.index.get_level_values(level="boundary").unique()
+        for b in boundaries:
+            _, axes = plt.subplots(2, 1, figsize=(10, 7))
+            plt.suptitle(f"Boundary {b}")
+            loading.xs(b, level="boundary").xs("DIRECT", level="direction").plot(ax=axes[0])
+            axes[0].set_ylabel("loading DIRECT [pu]")
+            loading.xs(b, level="boundary").xs("OPPOSITE", level="direction").plot(ax=axes[1])
+            axes[1].set_ylabel("loading OPPOSITE [pu]")
+
+    @staticmethod
+    def boundary_loading_redispatch(rc: ResultsComputer, which: Literal["ptdf", "actual"]):
+        loading = rc.boundary_loading.compare_redispatch(which=which)
+        loading["solved_by_fb"] = loading["iem"] - loading["iem_fb"]
+        boundaries = loading.index.get_level_values(level="boundary").unique()
+        for b in boundaries:
+            _, axes = plt.subplots(2, 1, figsize=(10, 7))
+            plt.suptitle(f"Boundary {b}")
+            loading.xs(b, level="boundary").xs("DIRECT", level="direction").plot(ax=axes[0])
+            axes[0].set_ylabel("loading DIRECT [pu]")
+            loading.xs(b, level="boundary").xs("OPPOSITE", level="direction").plot(ax=axes[1])
+            axes[1].set_ylabel("loading OPPOSITE [pu]")
 
 class ScatterPlot:
     pass
