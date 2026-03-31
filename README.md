@@ -5,7 +5,15 @@ SPDX-License-Identifier: MIT
 
 # FBMC implementation on GB model using openTYNDP data for RoE
 
-> Description is currently being expanded.
+1. Implements 3 (sequentially solved) scenarios to represent economic dispatch and redispatch.
+   1. IEM: Assumes perfect foresight of load and renewable generation
+   2. TF: Assumes imperfect forecasting which impacts load and generation.
+   3. SQ: Adds cost for re-dispatch when the actual load deviates from the forecasted (TF) scenario. Limits line capacity based on calculated flows in TF scenario (+/- 5% tolerance by default)
+
+2. Performs solves on merged network (Open-TYNDP and GB dispatch). Improves resolution of GB within the TYNDP model and/or increases scope of continental Europe within the GB model. Key implementation details:
+   1. Inherits technology assumptions from the Open-TYNDP model
+   2. Implements conventional generators from GB model as multilinks with tracked CO2 as in Open-TYNDP
+   3. Implement corresponding components to account for ramp up and down (for generators, storage units, links, and stores).
 
 ## Setup 
 
