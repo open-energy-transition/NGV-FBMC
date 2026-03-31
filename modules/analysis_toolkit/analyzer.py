@@ -139,16 +139,23 @@ class ResultsComputer(ResultsComputerBase):
             regex=r" ramp (up|down)$", axis=0
         ).index.tolist() + ["load"]
 
-        constraint_costs = n.statistics.opex(  # todo: not working yet, we need to wait for the marginal cost of links from OET.
+        # Exclude the EU fuel buses ramp up/down and the Store ramp up/down
+        constraint_costs = n.statistics.opex(
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
             carrier=constraint_carriers,
-        ).query("not bus.str.contains('EU ')")
+        ).query("not name.str.contains('EU gas|EU waste|EU solid biomass')").drop(["Store ramp up", "Store ramp down"], level = "carrier")
 
         return constraint_costs
 
     @metric(restricted_to= "redispatch")
     def countertrading_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+        """
+        Counter trading in the interconnectors is modeled with the virtual generators at the GB-neighbor side
+        The components we want to filter have: Component type = "Generator", Carrier type = "Link ramp up/down"
+        Note: The "Link ramp down" components have negative opex (they decrease the objective function)
+        """
+
         counter_trading_carriers = n.carriers.filter(
             regex=r"Link ramp (up|down)$", axis=0
         ).index.tolist()
@@ -158,25 +165,46 @@ class ResultsComputer(ResultsComputerBase):
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
             carrier=counter_trading_carriers
-        ).query('not bus.str.contains("GB ") and carrier.str.contains("ramp")')
+        )
 
         return counter_trading_costs
 
 
     @metric(restricted_to= "redispatch")
     def redispatch_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
-        redispatch_carriers = n.carriers.filter(
-            regex=r"(Generator|Link|StorageUnit) ramp (up|down)$", axis=0
+        """
+        Redispatch costs occur from changing the setpoint of generation units. Some generation technologies are modeled
+        as "Generators" (i.e. Solar, Wind), while others as "Links" (i.e. gas-ccgt, biomass etc.)
+        The "Generator" components we want to filter have: Component type = "Generator", Carrier type = "Generator ramp up/down"
+        The "Link" components we want to filter have: Component type = "Link", Carrier type = "Link ramp up/down"
+        Note: The "Link ramp down" carriers of the "Link" components have negative opex (they decrease the objective function)
+        We also exclude the opex of the EU fuel buses (EU gas/waste/solid biomass ramp up/down)
+        """
+        redispatch_carriers_generators = n.carriers.filter(
+            regex=r"Generator ramp (up|down)$", axis=0
         ).index.tolist()
 
-        redispatch_costs = n.statistics.opex(
-            comps=["Generator", "Link", "StorageUnit"],
+        redispatch_carriers_links = n.carriers.filter(
+            regex=r"Link ramp (up|down)$", axis=0
+        ).index.tolist()
+
+        redispatch_costs_generators = n.statistics.opex(
+            comps=["Generator"],
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
-            carrier=redispatch_carriers
-        ).query('country=="GB" and bus!="GBNI" and carrier.str.contains("ramp")')
+            carrier=redispatch_carriers_generators,
+        ).query("not bus.str.contains('EU ')")
 
-        return redispatch_costs
+        redispatch_costs_links = n.statistics.opex(
+            comps=["Link"],
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers_links,
+        )
+
+        redispatch_costs_total = pd.concat([redispatch_costs_generators, redispatch_costs_links], axis = 0)
+
+        return redispatch_costs_total
 
     @metric(restricted_to= "redispatch")
     def load_shedding_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
