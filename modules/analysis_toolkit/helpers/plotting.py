@@ -35,11 +35,10 @@ class TimeSeriesPlot:
     @staticmethod
     def boundary_loading_dispatch(rc: ResultsComputer, which: Literal["ptdf", "actual"]):
         loading = rc.boundary_loading.compare_dispatch(which=which)
-        loading["solved_by_fb"] = loading["iem"] - loading["iem_fb"]
         boundaries = loading.index.get_level_values(level="boundary").unique()
         for b in boundaries:
             _, axes = plt.subplots(2, 1, figsize=(10, 7))
-            plt.suptitle(f"Boundary {b}")
+            plt.suptitle(f"Boundary {b} - {which}")
             loading.xs(b, level="boundary").xs("DIRECT", level="direction").plot(ax=axes[0])
             axes[0].set_ylabel("loading DIRECT [pu]")
             loading.xs(b, level="boundary").xs("OPPOSITE", level="direction").plot(ax=axes[1])
@@ -48,11 +47,10 @@ class TimeSeriesPlot:
     @staticmethod
     def boundary_loading_redispatch(rc: ResultsComputer, which: Literal["ptdf", "actual"]):
         loading = rc.boundary_loading.compare_redispatch(which=which)
-        loading["solved_by_fb"] = loading["iem"] - loading["iem_fb"]
         boundaries = loading.index.get_level_values(level="boundary").unique()
         for b in boundaries:
             _, axes = plt.subplots(2, 1, figsize=(10, 7))
-            plt.suptitle(f"Boundary {b}")
+            plt.suptitle(f"Boundary {b} - {which}")
             loading.xs(b, level="boundary").xs("DIRECT", level="direction").plot(ax=axes[0])
             axes[0].set_ylabel("loading DIRECT [pu]")
             loading.xs(b, level="boundary").xs("OPPOSITE", level="direction").plot(ax=axes[1])

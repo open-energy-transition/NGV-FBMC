@@ -2,6 +2,8 @@ import pypsa
 import pandas as pd
 import numpy as np
 
+import functools
+from types import MethodType
 from typing import Literal
 
 from modules.analysis_toolkit.helpers.results_computer_base import ResultsComputerBase
@@ -9,6 +11,32 @@ from modules.analysis_toolkit.helpers.results_computer_wrappers import metric
 from modules.analysis_toolkit.helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
 from modules.analysis_toolkit.helpers.config.filepaths import get_etys_boundaries_geopandas_fp
 from modules.analysis_toolkit.helpers.index_finder import IndexFinder, GeoOptions
+
+
+def _show_sum_by(result: pd.DataFrame, labels: list[str]):
+    index_labels = [l for l in labels if l in result.index.names]
+    column_labels = [l for l in labels if l in result.columns.names]
+    remaining_labels = set(labels) - set(index_labels) - set(column_labels)
+    if remaining_labels:
+        raise ValueError(
+            f"The following labels are not found in the index or columns of the result: {remaining_labels}")
+    else:
+        available_labels_in_df = result.index.names + result.columns.names
+        print(f"Grouping by {labels} aggregates across {list(set(available_labels_in_df) - set(labels))}.")
+        result = result.groupby(level=column_labels, axis=1).sum() if column_labels else result.sum(axis=1)
+        result = result.groupby(level=index_labels, axis=0).sum() if index_labels else result.sum(axis=0)
+        return result
+
+def _scale(result: pd.DataFrame, factor: float):
+    return result * factor
+
+def format_result(result: pd.DataFrame, sum_by: list[str], factor: float = 1e-6):
+    # Warning: be careful of what is being aggregated and if it requires an abs() before summing, or if it requires
+    #   a different aggregation function. Only use this function when you are sure of the result it will give you.
+    #   Also note that by default, it divides by 1 million.
+    result = _show_sum_by(result, sum_by)
+    result = _scale(result, factor)
+    return result
 
 
 class ResultsComputer(ResultsComputerBase):
@@ -21,6 +49,17 @@ class ResultsComputer(ResultsComputerBase):
 
     Callers can use: res.revenue.iem(**kwargs), res.revenue.diff(), res.revenue.sq(), res.revenue(n, **kwargs)
     """
+    def __getattribute__(self, name):
+        attr = super().__getattribute__(name)
+        if isinstance(attr, MethodType):
+            func = attr.__func__
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                if func.__qualname__.startswith("ResultsComputer.") and not name.startswith("_"):
+                    print(f"Calling method: {name}")
+                return attr(*args, **kwargs)
+            return wrapper
+        return attr
 
     def __init__(self, year: int, apply_snapshot_filter: bool = False):
         super().__init__(year=year, apply_snapshot_filter=apply_snapshot_filter)
@@ -32,12 +71,12 @@ class ResultsComputer(ResultsComputerBase):
             groupby=self.groupby). \
             drop(["DC"], level="carrier") \
             .xs("GB", level="country").drop("GBNI", level="bus")
-        assert np.allclose(net_position_gb.sum(axis=0), self._get_gb_interconnector_flows(n).sum(), atol=1), \
+        assert np.allclose(net_position_gb.sum(axis=0), -self._get_gb_interconnector_flows(n).sum(), atol=1), \
             "Generation - demand in GB should be approximately equal to the net flow on the interconnectors (with a tolerance of 1 MW, to account for small numerical differences)."
         return net_position_gb.sum(axis=0)
 
     def _get_gb_interconnector_flows(self, n: pypsa.Network):
-        link_flows = n.statistics.transmission(
+        link_flows = -n.statistics.transmission(  # negative sign to have the flow direction from GB to the neighboring countries as negative, which is consistent with the net position of GB.
             bus_carrier=["AC"],
             components=["Link"],
             groupby=self.groupby,
@@ -460,7 +499,7 @@ class ResultsComputer(ResultsComputerBase):
         producer_total = self._producer_surplus_system(n, **kwargs).sum().sum()/1e6
         storage_total = self._storage_surplus_system(n, **kwargs).sum().sum()/1e6
 
-        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.SYSTEM_WIDE, **kwargs).values))/1e6
+        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.GB_ONLY, **kwargs).values))/1e6
 
         # 2. Calculate the grand total
         total_welfare = producer_total + consumer_total + storage_total + congestion_total
@@ -494,7 +533,7 @@ class ResultsComputer(ResultsComputerBase):
 
     @metric
     def interconnector_flows(self, n: pypsa.Network):
-         return self._get_gb_interconnector_flows(n=n)
+         return -self._get_gb_interconnector_flows(n=n)  # negative sign to have GB exports as positive
 
     @metric
     def net_position_gb(self, n: pypsa.Network):
@@ -515,15 +554,15 @@ class ResultsComputer(ResultsComputerBase):
         return congestion_income
 
     @metric(restricted_to="dispatch")
-    def congestion_income(self, n: pypsa.Network, where=GeoOptions.SYSTEM_WIDE, **kwargs):
+    def congestion_income(self, n: pypsa.Network, where=GeoOptions.GB_ONLY, **kwargs):
         """Public metric wrapper for congestion income."""
         return self._congestion_income(n, where=where, **kwargs)
 
     def restricted_capacity(self):
-        return self.interconnector_flows.iem_dispatch() - self.interconnector_flows.iem_fb_dispatch()
+        return self.interconnector_flows.iem_dispatch().sub(self.interconnector_flows.iem_fb_dispatch(), fill_value=0)
 
     def lost_congestion_income(self):
-        return self.congestion_income.iem_dispatch() - self.congestion_income.iem_fb_dispatch()
+        return self.congestion_income.iem_dispatch().sub(self.congestion_income.iem_fb_dispatch(), fill_value=0)
 
     # TODO: the following metrics are optional, but they can help find patterns and correlations in the results.
     #  We can decide later whether they are worth implementing or not.
@@ -554,7 +593,6 @@ class ResultsComputer(ResultsComputerBase):
 
 
 if __name__ == "__main__":
-    from modules.analysis_toolkit.analyzer import ResultsComputer
     from modules.analysis_toolkit.helpers.plotting import TimeSeriesPlot, HistogramPlot, BarChartPlot, WaterfallPlot
 
     study_years = [2030, 2040]
@@ -566,12 +604,11 @@ if __name__ == "__main__":
         for year in [2030, 2040]
     }
 
-    rc.constraint_costs.iem_redispatch()
-    rc.congestion_income.compare_dispatch()
-    final_surplus_df = rc[2030].storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-    congestion_income_df = rc[2030].congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-
-    welfare_comparison = rc[2030].welfare_system.compare_dispatch()
+    # rc[2030].constraint_costs.compare_redispatch()
+    #
+    # storage_surplus_df = rc[2030].storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+    # congestion_income_df = rc[2030].congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+    # welfare_comparison = rc[2030].welfare_system.compare_dispatch()
 
     print()
 

@@ -101,35 +101,38 @@ class ResultsComputerBase:
         return func(self.ns.get_iem_fb_redispatch())
 
     def _diff_sq(self, func: Callable[[pypsa.Network], Any]):
-        return func(self.ns.get_sq_redispatch()) - func(self.ns.get_sq_dispatch())
+        return func(self.ns.get_sq_redispatch()).sub(func(self.ns.get_sq_dispatch()), fill_value=0)
 
     def _diff_iem(self, func: Callable[[pypsa.Network], Any]):
-        return func(self.ns.get_iem_redispatch()) - func(self.ns.get_iem_dispatch())
+        return func(self.ns.get_iem_redispatch()).sub(func(self.ns.get_iem_dispatch()), fill_value=0)
 
     def _diff_iem_fb(self, func: Callable[[pypsa.Network], Any]):
-        return func(self.ns.get_iem_fb_redispatch()) - func(self.ns.get_iem_fb_dispatch())
+        return func(self.ns.get_iem_fb_redispatch()).sub(func(self.ns.get_iem_fb_dispatch()), fill_value=0)
 
     def _compare_dispatch(self, func: Callable[[pypsa.Network], Any]):
         return pd.concat({
             'sq': self._sq_dispatch(func),
             'iem': self._iem_dispatch(func),
             'iem_fb': self._iem_fb_dispatch(func),
-            'diff: iem-sq': self._iem_dispatch(func) - self._sq_dispatch(func)
-        }, axis=1)
+            'diff: iem-sq': self._iem_dispatch(func).sub(self._sq_dispatch(func), fill_value=0),
+            'diff: iemfb-iem': self._iem_fb_dispatch(func).sub(self._iem_dispatch(func), fill_value=0)
+        }, axis=1, names=["scenario"])
 
     def _compare_redispatch(self, func: Callable[[pypsa.Network], Any]):
         return pd.concat({
             'sq': self._sq_redispatch(func),
             'iem': self._iem_redispatch(func),
-            'iem_fb': self._iem_fb_redispatch(func)
-        }, axis=1)
+            'iem_fb': self._iem_fb_redispatch(func),
+            'diff: iem-sq': self._iem_redispatch(func).sub(self._sq_redispatch(func), fill_value=0),
+            'diff: iemfb-iem': self._iem_fb_redispatch(func).sub(self._iem_redispatch(func), fill_value=0)
+        }, axis=1, names=["scenario"])
 
     def _compare_diff(self, func: Callable[[pypsa.Network], Any]):
         return pd.concat({
             'sq': self._diff_sq(func),
             'iem': self._diff_iem(func),
             'iem_fb': self._diff_iem_fb(func)
-        }, axis=1)
+        }, axis=1, names=["scenario"])
 
     # native statistics package functions
 
