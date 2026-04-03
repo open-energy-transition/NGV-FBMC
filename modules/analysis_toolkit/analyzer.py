@@ -183,8 +183,7 @@ class ResultsComputer(ResultsComputerBase):
 
         return (loading > 1).groupby(["boundary", "direction"]).sum()
 
-    @metric(restricted_to= "redispatch")
-    def constraint_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+    def _constraint_costs(self, n: pypsa.Network):
         # Constraint costs include both re-dispatch and counter-trading costs
         constraint_carriers = n.carriers.filter(
             regex=r" ramp (up|down)$", axis=0
@@ -195,12 +194,16 @@ class ResultsComputer(ResultsComputerBase):
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
             carrier=constraint_carriers,
+            drop_zero=False
         ).query("not name.str.contains('EU gas|EU waste|EU solid biomass')").drop(["Store ramp up", "Store ramp down"], level = "carrier")
 
         return constraint_costs
 
     @metric(restricted_to= "redispatch")
-    def countertrading_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+    def constraint_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+        return self._constraint_costs(n=n)
+
+    def _countertrading_costs(self, n: pypsa.Network):
         """
         Counter trading in the interconnectors is modeled with the virtual generators at the GB-neighbor side
         The components we want to filter have: Component type = "Generator", Carrier type = "Link ramp up/down"
@@ -215,14 +218,17 @@ class ResultsComputer(ResultsComputerBase):
             comps=["Generator"],
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
-            carrier=counter_trading_carriers
+            carrier=counter_trading_carriers,
+            drop_zero=False
         )
 
         return counter_trading_costs
 
-
     @metric(restricted_to= "redispatch")
-    def redispatch_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+    def countertrading_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+        return self._countertrading_costs(n=n)
+
+    def _redispatch_costs(self, n: pypsa.Network):
         """
         Redispatch costs occur from changing the setpoint of generation units. Some generation technologies are modeled
         as "Generators" (i.e. Solar, Wind), while others as "Links" (i.e. gas-ccgt, biomass etc.)
@@ -239,11 +245,16 @@ class ResultsComputer(ResultsComputerBase):
             regex=r"Link ramp (up|down)$", axis=0
         ).index.tolist()
 
+        redispatch_carriers_storage = n.carriers.filter(
+            regex=r"StorageUnit ramp (up|down)$", axis=0
+        ).index.tolist()
+
         redispatch_costs_generators = n.statistics.opex(
             comps=["Generator"],
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_generators,
+            drop_zero=False
         ).query("not bus.str.contains('EU ')")
 
         redispatch_costs_links = n.statistics.opex(
@@ -251,22 +262,41 @@ class ResultsComputer(ResultsComputerBase):
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_links,
+            drop_zero=False
         )
 
-        redispatch_costs_total = pd.concat([redispatch_costs_generators, redispatch_costs_links], axis = 0)
+        redispatch_costs_storage = n.statistics.opex(
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers_storage,
+            drop_zero=False
+        )
+
+        redispatch_costs_total = pd.concat(
+            [redispatch_costs_generators, redispatch_costs_links, redispatch_costs_storage],
+            axis=0
+        )
 
         return redispatch_costs_total
 
     @metric(restricted_to= "redispatch")
-    def load_shedding_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+    def redispatch_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+        return self._redispatch_costs(n=n)
+
+    def _load_shedding_costs(self, n: pypsa.Network):
         load_shedding_costs = n.statistics.opex(
             comps=["Generator"],
             groupby_time=False,
             groupby=["name", "carrier", "bus", "country"],
-            carrier="load"
+            carrier="load",
+            drop_zero=False
         )
 
         return load_shedding_costs
+
+    @metric(restricted_to= "redispatch")
+    def load_shedding_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
+        return self._load_shedding_costs(n=n)
 
     @metric(restricted_to= "dispatch")
     def consumer_costs_in_gb(self, n: pypsa.Network, **kwargs): # To be used in the Dispatch model only
@@ -589,15 +619,103 @@ class ResultsComputer(ResultsComputerBase):
         # [optional] ramped up and down renewable production in MW that can help find patterns and correlations
         return NotImplementedError
 
-    @metric(restricted_to="redispatch")
-    def redispatched_volume(self):
-        # [optional] total volume of ramp up and ramp down redispatch
-        return NotImplementedError
+    def _redispatched_volume(self, n: pypsa.Network):
+        redispatch_carriers_generators = n.carriers.filter(
+            regex=r"Generator ramp (up|down)$", axis=0
+        ).index.tolist()
+
+        redispatch_carriers_links = n.carriers.filter(
+            regex=r"Link ramp (up|down)$", axis=0
+        ).index.tolist()
+
+        redispatch_carriers_storage = n.carriers.filter(
+            regex=r"StorageUnit ramp (up|down)$", axis=0
+        ).index.tolist()
+
+        redispatch_volume_generators = n.statistics.energy_balance(
+            comps=["Generator"],
+            bus_carrier="AC",
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers_generators,
+            drop_zero=False
+        ).query("not bus.str.contains('EU ')").abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
+
+        redispatch_volume_links = n.statistics.energy_balance(
+            comps=["Link"],
+            bus_carrier="AC",
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers_links,
+            drop_zero=False
+        ).abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
+
+        redispatch_volume_storage = n.statistics.energy_balance(
+            bus_carrier="AC",
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers_storage,
+            drop_zero=False
+        ).abs()
+
+        redispatch_volume_total = pd.concat(
+            [redispatch_volume_generators, redispatch_volume_links, redispatch_volume_storage],
+            axis=0
+        )
+        return redispatch_volume_total
+
+    def _countertraded_volume(self, n: pypsa.Network):
+        counter_trading_carriers = n.carriers.filter(
+            regex=r"Link ramp (up|down)$", axis=0
+        ).index.tolist()
+
+        counter_trading_volume = n.statistics.energy_balance(
+            comps=["Generator"],
+            bus_carrier="AC",
+            groupby_time=False,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=counter_trading_carriers,
+            drop_zero=False
+        ).abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
+        return counter_trading_volume
 
     @metric(restricted_to="redispatch")
-    def countertraded_volume(self):
-        # [optional] total volume of ramp up and ramp down counter-trading
-        return NotImplementedError
+    def redispatched_volume(self, n: pypsa.Network, **kwargs):
+        return self._redispatched_volume(n=n)
+
+    @metric(restricted_to="redispatch")
+    def countertraded_volume(self, n: pypsa.Network, **kwargs):
+        return self._countertraded_volume(n=n)
+
+    def _congestion_management_volume_without_shedding(self, n: pypsa.Network):
+        congestion_management_volume = pd.concat(
+            [self._redispatched_volume(n=n), self._countertraded_volume(n=n)],
+            axis=0
+        )
+        return congestion_management_volume
+
+    def _congestion_management_cost_without_shedding(self, n: pypsa.Network):
+        congestion_management_cost = pd.concat(
+            [self._redispatch_costs(n=n), self._countertrading_costs(n=n)],
+            axis=0
+        )
+        return congestion_management_cost
+
+    @metric(restricted_to="redispatch")
+    def average_ramping_costs_per_mw(self, n: pypsa.Network, **kwargs):
+        cost = self._congestion_management_cost_without_shedding(n).droplevel(["bus", "country"]) # drop the bus and country level to have the same index as the volume
+        volume = self._congestion_management_volume_without_shedding(n).droplevel(["bus", "country"])  # drop the bus and country level to have the same index as the volume
+
+        def total_in_direction(df, direction):
+            return df.filter(like=f"ramp {direction}", axis=0).sum().sum()
+
+        # TODO: check why the values are very small (compared to the average bid/offer prices published by NESO) (~±3 instead of 100-300£/MWh)
+        return pd.DataFrame(
+            {
+                f"avg_cost_ramp_{direction}": [total_in_direction(cost, direction) / total_in_direction(volume, direction)]
+                for direction in ["up", "down"]
+            }
+        ).T
 
 
 if __name__ == "__main__":
