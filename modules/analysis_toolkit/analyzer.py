@@ -499,7 +499,7 @@ class ResultsComputer(ResultsComputerBase):
         producer_total = self._producer_surplus_system(n, **kwargs).sum().sum()/1e6
         storage_total = self._storage_surplus_system(n, **kwargs).sum().sum()/1e6
 
-        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.GB_ONLY, **kwargs).values))/1e6
+        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.SYSTEM_WIDE, **kwargs).values))/1e6
 
         # 2. Calculate the grand total
         total_welfare = producer_total + consumer_total + storage_total + congestion_total
@@ -536,6 +536,14 @@ class ResultsComputer(ResultsComputerBase):
          return -self._get_gb_interconnector_flows(n=n)  # negative sign to have GB exports as positive
 
     @metric
+    def interconnector_price_spreads(self, n: pypsa.Network):# positive price spread <--> GB is cheaper
+        flows = -self._get_gb_interconnector_flows(n=n)
+        congestion_income = self._congestion_income(n=n, where=GeoOptions.GB_ONLY)
+        price_spreads = congestion_income.div(flows, fill_value=0)
+        return price_spreads
+
+
+    @metric
     def net_position_gb(self, n: pypsa.Network):
         return self._get_gb_net_position(n=n)
 
@@ -554,7 +562,7 @@ class ResultsComputer(ResultsComputerBase):
         return congestion_income
 
     @metric(restricted_to="dispatch")
-    def congestion_income(self, n: pypsa.Network, where=GeoOptions.GB_ONLY, **kwargs):
+    def congestion_income(self, n: pypsa.Network, where=GeoOptions.SYSTEM_WIDE, **kwargs):
         """Public metric wrapper for congestion income."""
         return self._congestion_income(n, where=where, **kwargs)
 
@@ -604,11 +612,13 @@ if __name__ == "__main__":
         for year in [2030, 2040]
     }
 
-    # rc[2030].constraint_costs.compare_redispatch()
-    #
-    # storage_surplus_df = rc[2030].storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-    # congestion_income_df = rc[2030].congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-    # welfare_comparison = rc[2030].welfare_system.compare_dispatch()
+    #rc[2030].constraint_costs.iem_redispatch()
+    #rc[2030].congestion_income.compare_dispatch()
+    final_surplus_df = rc[2030].storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+    congestion_income_df = rc[2030].congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
+
+    welfare_comparison = rc[2030].welfare_system.compare_dispatch()
+    price_spreads = rc[2030].interconnector_price_spreads.compare_dispatch()
 
     print()
 
