@@ -45,6 +45,8 @@ etys:
   use_future_capacities: true
   manual_future_capacities:
     # Capabilities used and provided by N-Side
+    # based on ETYS 2023 boundary charts
+    # available at https://www.neso.energy/document/286691/download (last accessed: 2026-04-01 11:20 UTC+2)
     B3b:
       2030: 400
       2040: 400
