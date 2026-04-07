@@ -714,6 +714,17 @@ def patch_OH_interconnector_capacities(
 
     return n
 
+def scale_gb_loads(n_gb):
+    # Scales the GB loads to match the TYNDP loads
+    # Normalizes against annual total energy demand in TYNDP's GB
+    ratio = 1.547630
+    n_gb.loads_t.p_set = ratio * n_gb.loads_t.p_set
+
+    n_gb.links.loc[n_gb.links.index.str.contains("unmanaged load"), "p_nom"] *= ratio
+    n_gb.links.loc[n_gb.links.index.str.contains("DSR"), "p_nom"] *= ratio
+
+
+    return n_gb 
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -751,6 +762,9 @@ if __name__ == "__main__":
     n_eur = patch_OH_interconnector_capacities(
         n=n_eur, planning_horizon=int(snakemake.wildcards.planning_horizons)
     )
+
+    # Patch: scale the GB loads to match those in TYNDP 
+    n_gb = scale_gb_loads(n_gb)
 
     # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
