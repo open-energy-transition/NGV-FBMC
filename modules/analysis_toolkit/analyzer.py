@@ -191,7 +191,7 @@ class ResultsComputer(ResultsComputerBase):
 
         # Exclude the EU fuel buses ramp up/down and the Store ramp up/down
         constraint_costs = n.statistics.opex(
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=constraint_carriers,
             drop_zero=False
@@ -216,7 +216,7 @@ class ResultsComputer(ResultsComputerBase):
 
         counter_trading_costs = n.statistics.opex(
             comps=["Generator"],
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=counter_trading_carriers,
             drop_zero=False
@@ -251,7 +251,7 @@ class ResultsComputer(ResultsComputerBase):
 
         redispatch_costs_generators = n.statistics.opex(
             comps=["Generator"],
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_generators,
             drop_zero=False
@@ -259,14 +259,14 @@ class ResultsComputer(ResultsComputerBase):
 
         redispatch_costs_links = n.statistics.opex(
             comps=["Link"],
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_links,
             drop_zero=False
         )
 
         redispatch_costs_storage = n.statistics.opex(
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_storage,
             drop_zero=False
@@ -286,7 +286,7 @@ class ResultsComputer(ResultsComputerBase):
     def _load_shedding_costs(self, n: pypsa.Network):
         load_shedding_costs = n.statistics.opex(
             comps=["Generator"],
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier="load",
             drop_zero=False
@@ -334,15 +334,15 @@ class ResultsComputer(ResultsComputerBase):
         Producer cost = fuel cost + co2 cost + opex (vom). The first two are extracted with the revenue command.
         """
         # Filter all components that inject or absorb power to/from the AC grid of GB.
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier", "country"]).xs("GB", level = "country")
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = self.groupby_time, groupby= ["name", "carrier", "country"]).xs("GB", level = "country")
 
         # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
         component_opex = n.statistics.opex(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         # Includes fuel and co2 costs, excludes electricity revenues.
         component_production_costs = n.statistics.revenue(groupby=["name", "carrier", "bus_carrier"],
-                                                     groupby_time=False, at_port = True).drop(["AC", "AC_OH"], level = "bus_carrier").droplevel("bus_carrier").groupby(["component","name", "carrier"]).sum()
+                                                     groupby_time=self.groupby_time, at_port = True).drop(["AC", "AC_OH"], level = "bus_carrier").droplevel("bus_carrier").groupby(["component","name", "carrier"]).sum()
 
         # DC links and storage components should be excluded.
         excluded_carriers = ["home battery discharger", "DC"]
@@ -364,16 +364,16 @@ class ResultsComputer(ResultsComputerBase):
         Producer cost = fuel cost + co2 cost + opex (vom). The first two are extracted with the revenue command.
         """
         # Filter all components that inject or absorb power to/from the AC grid of GB.
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=False,
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=self.groupby_time,
                                                      groupby=["name", "carrier"])
 
         # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
         component_opex = n.statistics.opex(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         # Includes fuel and co2 costs, excludes electricity revenues.
         component_production_costs = n.statistics.revenue(groupby=["name", "carrier", "bus_carrier"],
-                                                          groupby_time=False, at_port=True).drop(["AC", "AC_OH"],
+                                                          groupby_time=self.groupby_time, at_port=True).drop(["AC", "AC_OH"],
                                                                                                  level="bus_carrier").droplevel(
             "bus_carrier").groupby(["component", "name", "carrier"]).sum()
 
@@ -409,10 +409,10 @@ class ResultsComputer(ResultsComputerBase):
 
         # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
         component_opex = n.statistics.opex(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         component_revenue = n.statistics.revenue(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         # DC links and storage components should be excluded.
         excluded_carriers = ["home battery discharger", "DC"]
@@ -434,14 +434,14 @@ class ResultsComputer(ResultsComputerBase):
         Producer surplus = electricity revenue -  fuel cost - co2 cost - opex (vom). The net sum of the first 3 are extracted with the revenue command.
         """
         # Filter all components that inject or absorb power to/from the AC grid of GB.
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier"])
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = self.groupby_time, groupby= ["name", "carrier"])
 
         # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
         component_opex = n.statistics.opex(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         component_revenue = n.statistics.revenue(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         # DC links and storage components should be excluded. Also, load shedding generators and the elec distribution grid links.
         excluded_carriers = ["home battery discharger", "DC", "DC_OH", "battery charger", "battery discharger", "hydro-phs-pump",
@@ -464,14 +464,14 @@ class ResultsComputer(ResultsComputerBase):
         Storage surplus = electricity cashflow - opex (vom).
         """
         # Filter all components that inject or absorb power to/from the AC grid of GB.
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=False,
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=self.groupby_time,
                                                      groupby=["name", "carrier", "country"]).xs("GB", level="country")
 
         # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
         component_opex = n.statistics.opex(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
-        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "country"], groupby_time = False)
+        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "country"], groupby_time = self.groupby_time)
 
         # --- Align both dataframes to have the exact same index ---
         energy_balance_aligned_opex, component_opex = energy_balance.align(component_opex, join='inner')
@@ -492,15 +492,15 @@ class ResultsComputer(ResultsComputerBase):
 
         # TODO : need to ensure that all "storage" components are included --> possibly add a test? (another test: dischargers have more surplus than chargers (who have negative surplus))
         # Filter all components that inject or absorb power to/from the AC grid of GB.
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=False,
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time=self.groupby_time,
                                                      groupby=["name", "carrier"])
 
         # Note: For the opex we should not define the bus_carrier filter, as we need to include the links that are producers.
         component_opex = n.statistics.opex(groupby=["name", "carrier"],
-                                           groupby_time=False)
+                                           groupby_time=self.groupby_time)
 
         component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby=["name", "carrier"],
-                                                   groupby_time=False)
+                                                   groupby_time=self.groupby_time)
 
         # --- Align both dataframes to have the exact same index ---
         energy_balance_aligned_opex, component_opex = energy_balance.align(component_opex, join='inner')
@@ -529,7 +529,7 @@ class ResultsComputer(ResultsComputerBase):
         producer_total = self._producer_surplus_system(n, **kwargs).sum().sum()/1e6
         storage_total = self._storage_surplus_system(n, **kwargs).sum().sum()/1e6
 
-        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.SYSTEM_WIDE, **kwargs).values))/1e6
+        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.SYSTEM_WIDE).values))/1e6
 
         # 2. Calculate the grand total
         total_welfare = producer_total + consumer_total + storage_total + congestion_total
@@ -577,7 +577,7 @@ class ResultsComputer(ResultsComputerBase):
     def net_position_gb(self, n: pypsa.Network):
         return self._get_gb_net_position(n=n)
 
-    def _congestion_income(self, n: pypsa.Network, where=GeoOptions.GB_ONLY, **kwargs):
+    def _congestion_income(self, n: pypsa.Network, where:GeoOptions, **kwargs):
         """
         The method returns a disaggregated data frame with the time series of the congestion income per interconnector (for GB only).
         Congestion income = flow on interconnector * price difference between the two sides of the interconnector.
@@ -585,14 +585,14 @@ class ResultsComputer(ResultsComputerBase):
         link_names = IndexFinder.get_interconnectors(n, where=where)
         congestion_income = n.statistics.revenue(
             bus_carrier=["AC", "AC_OH"],
-            groupby_time=False,
+            groupby_time=self.groupby_time,
             carrier=["DC", "DC_OH"],
             groupby=["name"]
         ).query('name in @link_names').droplevel("component")
         return congestion_income
 
     @metric(restricted_to="dispatch")
-    def congestion_income(self, n: pypsa.Network, where=GeoOptions.SYSTEM_WIDE, **kwargs):
+    def congestion_income(self, n: pypsa.Network, where:GeoOptions, **kwargs):
         """Public metric wrapper for congestion income."""
         return self._congestion_income(n, where=where, **kwargs)
 
@@ -600,10 +600,8 @@ class ResultsComputer(ResultsComputerBase):
         return self.interconnector_flows.iem_dispatch().sub(self.interconnector_flows.iem_fb_dispatch(), fill_value=0)
 
     def lost_congestion_income(self):
-        return self.congestion_income.iem_dispatch().sub(self.congestion_income.iem_fb_dispatch(), fill_value=0)
+        return self.congestion_income.iem_dispatch().sub(self.congestion_income.iem_fb_dispatch(where=GeoOptions.GB_ONLY), fill_value=0)
 
-    # TODO: the following metrics are optional, but they can help find patterns and correlations in the results.
-    #  We can decide later whether they are worth implementing or not.
     @metric(restricted_to="dispatch")
     def renewable_dispatch(self):
         # [optional] renewable production in MW that can help find patterns and correlations
@@ -632,11 +630,27 @@ class ResultsComputer(ResultsComputerBase):
             regex=r"StorageUnit ramp (up|down)$", axis=0
         ).index.tolist()
 
+        buses = n.buses.query("carrier in ['AC', 'AC_OH']").index.to_list()
+        n.generators["ramp carrier"] = ""
+        n.links["ramp carrier"] = ""
+        n.storage_units["ramp carrier"] = ""
+
+        for bus in buses:
+            str_to_replace = f"{bus} "
+            gen_select = n.generators.index.str.contains("ramp") & (n.generators["bus"] == bus)
+            n.generators.loc[gen_select, "ramp carrier"] = n.generators.loc[gen_select].index.str.replace(str_to_replace, "")
+
+            link_select = n.links.index.str.contains("ramp") & ((n.links["bus0"] == bus) | (n.links["bus1"] == bus))
+            n.links.loc[link_select, "ramp carrier"] = n.links.loc[link_select].index.str.replace(str_to_replace, "")
+
+            storage_select = n.storage_units.index.str.contains("ramp") & (n.storage_units["bus"] == bus)
+            n.storage_units.loc[storage_select, "ramp carrier"] = n.storage_units.loc[storage_select].index.str.replace(str_to_replace, "")
+
         redispatch_volume_generators = n.statistics.energy_balance(
             comps=["Generator"],
             bus_carrier="AC",
-            groupby_time=False,
-            groupby=["name", "carrier", "bus", "country"],
+            groupby_time=self.groupby_time,
+            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
             carrier=redispatch_carriers_generators,
             drop_zero=False
         ).query("not bus.str.contains('EU ')").abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
@@ -644,16 +658,16 @@ class ResultsComputer(ResultsComputerBase):
         redispatch_volume_links = n.statistics.energy_balance(
             comps=["Link"],
             bus_carrier="AC",
-            groupby_time=False,
-            groupby=["name", "carrier", "bus", "country"],
+            groupby_time=self.groupby_time,
+            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
             carrier=redispatch_carriers_links,
             drop_zero=False
         ).abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
 
         redispatch_volume_storage = n.statistics.energy_balance(
             bus_carrier="AC",
-            groupby_time=False,
-            groupby=["name", "carrier", "bus", "country"],
+            groupby_time=self.groupby_time,
+            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
             carrier=redispatch_carriers_storage,
             drop_zero=False
         ).abs()
@@ -672,12 +686,23 @@ class ResultsComputer(ResultsComputerBase):
         counter_trading_volume = n.statistics.energy_balance(
             comps=["Generator"],
             bus_carrier="AC",
-            groupby_time=False,
-            groupby=["name", "carrier", "bus", "country"],
+            groupby_time=self.groupby_time,
+            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
             carrier=counter_trading_carriers,
             drop_zero=False
         ).abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
         return counter_trading_volume
+
+    def _load_shedding_volume(self, n: pypsa.Network):
+        load_shedding_volume = n.statistics.energy_balance(
+            comps=["Generator"],
+            bus_carrier="AC",
+            groupby_time=self.groupby_time,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier="load",
+            drop_zero=False
+        ).abs()  # take the absolute value to have a positive volume
+        return load_shedding_volume
 
     @metric(restricted_to="redispatch")
     def redispatched_volume(self, n: pypsa.Network, **kwargs):
@@ -687,16 +712,36 @@ class ResultsComputer(ResultsComputerBase):
     def countertraded_volume(self, n: pypsa.Network, **kwargs):
         return self._countertraded_volume(n=n)
 
+    @metric(restricted_to="redispatch")
+    def load_shedding_volume(self, n: pypsa.Network):
+        return self._load_shedding_volume(n=n)
+
+    @metric(restricted_to="redispatch")
+    def constraint_management_volume(self, n: pypsa.Network):
+        return pd.concat(
+            [
+                self._congestion_management_volume_without_shedding(n=n),
+                self._load_shedding_volume(n=n)
+            ],
+            axis=0
+        )
+
     def _congestion_management_volume_without_shedding(self, n: pypsa.Network):
         congestion_management_volume = pd.concat(
-            [self._redispatched_volume(n=n), self._countertraded_volume(n=n)],
+            [
+                self._redispatched_volume(n=n),
+                self._countertraded_volume(n=n)
+            ],
             axis=0
         )
         return congestion_management_volume
 
     def _congestion_management_cost_without_shedding(self, n: pypsa.Network):
         congestion_management_cost = pd.concat(
-            [self._redispatch_costs(n=n), self._countertrading_costs(n=n)],
+            [
+                self._redispatch_costs(n=n),
+                self._countertrading_costs(n=n)
+            ],
             axis=0
         )
         return congestion_management_cost
@@ -704,18 +749,17 @@ class ResultsComputer(ResultsComputerBase):
     @metric(restricted_to="redispatch")
     def average_ramping_costs_per_mw(self, n: pypsa.Network, **kwargs):
         cost = self._congestion_management_cost_without_shedding(n).droplevel(["bus", "country"]) # drop the bus and country level to have the same index as the volume
-        volume = self._congestion_management_volume_without_shedding(n).droplevel(["bus", "country"])  # drop the bus and country level to have the same index as the volume
+        volume = self._congestion_management_volume_without_shedding(n).droplevel(["bus", "country", "ramp carrier"])  # drop the bus and country level to have the same index as the volume
 
         def total_in_direction(df, direction):
             return df.filter(like=f"ramp {direction}", axis=0).sum().sum()
 
-        # TODO: check why the values are very small (compared to the average bid/offer prices published by NESO) (~±3 instead of 100-300£/MWh)
-        return pd.DataFrame(
+        return pd.Series(
             {
-                f"avg_cost_ramp_{direction}": [total_in_direction(cost, direction) / total_in_direction(volume, direction)]
+                f"avg_cost_ramp_{direction}": total_in_direction(cost, direction) / total_in_direction(volume, direction)
                 for direction in ["up", "down"]
             }
-        ).T
+        )
 
 
 if __name__ == "__main__":
@@ -739,8 +783,3 @@ if __name__ == "__main__":
     price_spreads = rc[2030].interconnector_price_spreads.compare_dispatch()
 
     print()
-
-    # query where any of the strings in a list are contained in a column
-    # n = rc.ns.iem_redispatch()
-    # ic_names = IndexFinder.get_interconnectors(n)
-    # rc.opex.iem_redispatch().query('index.str.contains("|".join(@ic_names))')

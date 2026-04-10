@@ -2,12 +2,12 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent.parent.parent.parent
 
-RESULTS_DIR = f"{ROOT_DIR}/results/results_20260330_1750"
+RESULTS_DIR = f"{ROOT_DIR}/results/results_20260408"
 
 IEM_SCENARIO = "IEM"
 SQ_SCENARIO = "SQ"
 TF_SCENARIO = "TF"
-IEM_FB_SCENARIO = "FBMC"  # Todo: update when IEM_FB scenario is available
+IEM_FB_SCENARIO = "FBMC"
 
 DISPATCH_DIR_NAME = "dispatch"
 REDISPATCH_DIR_NAME = "redispatch"
