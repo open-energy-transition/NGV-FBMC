@@ -11,6 +11,7 @@ from modules.analysis_toolkit.helpers.results_computer_wrappers import metric
 from modules.analysis_toolkit.helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
 from modules.analysis_toolkit.helpers.config.filepaths import get_etys_boundaries_geopandas_fp
 from modules.analysis_toolkit.helpers.index_finder import IndexFinder, GeoOptions
+from modules.analysis_toolkit.helpers.config.constants import CAPTURE_RATE_IC
 
 
 def _show_sum_by(result: pd.DataFrame, labels: list[str]):
@@ -305,9 +306,9 @@ class ResultsComputer(ResultsComputerBase):
         The storage units, the  DC links and the lines are excluded from the calculation.
         The demand consists of both unmanaged and DSR components.
         """
-        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier", "bus", "country"]).xs("GB", level = "country")
+        energy_balance = n.statistics.energy_balance(bus_carrier=["AC", "AC_OH"], groupby_time = False, groupby= ["name", "carrier", "bus"]).query("bus.str.contains('GB ')")
 
-        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "bus", "country"], groupby_time = False).xs("GB", level = "country")
+        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "bus"], groupby_time=False, at_port=True).query("bus.str.contains('GB ')")
         cashflow_of_consumption = component_cashflows[energy_balance.sum(axis=1) < 0]
         consumer_cost = cashflow_of_consumption.drop("DC", level="carrier").drop(["StorageUnit", "Line"], level="component")
         return consumer_cost
@@ -322,7 +323,7 @@ class ResultsComputer(ResultsComputerBase):
 
         # Exclude DC links and storage components
         excluded_carriers = ["DC", "DC_OH", "battery charger", "hydro-phs-pump", "hydro-phs-pure-pump"]
-        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "bus"], groupby_time = False)
+        component_cashflows = n.statistics.revenue(bus_carrier=["AC", "AC_OH"], groupby = ["name", "carrier", "bus"], groupby_time = False, at_port=True)
         cashflow_of_consumption = component_cashflows[energy_balance.sum(axis=1) < 0]
         consumer_cost = cashflow_of_consumption.drop(excluded_carriers, level="carrier").drop(["StorageUnit", "Line"], level="component")
         return consumer_cost
@@ -592,15 +593,22 @@ class ResultsComputer(ResultsComputerBase):
         return congestion_income
 
     @metric(restricted_to="dispatch")
-    def congestion_income(self, n: pypsa.Network, where:GeoOptions, **kwargs):
+    def congestion_income(self, n: pypsa.Network, where:GeoOptions, apply_capture_rates: bool=False, **kwargs):
         """Public metric wrapper for congestion income."""
-        return self._congestion_income(n, where=where, **kwargs)
+        ci = self._congestion_income(n, where=where, **kwargs)
+        if apply_capture_rates:
+            capture_rates = pd.Series(CAPTURE_RATE_IC)
+            ci = ci.mul(capture_rates, axis=0)
+        return ci
 
     def restricted_capacity(self):
         return self.interconnector_flows.iem_dispatch().sub(self.interconnector_flows.iem_fb_dispatch(), fill_value=0)
 
     def lost_congestion_income(self):
-        return self.congestion_income.iem_dispatch().sub(self.congestion_income.iem_fb_dispatch(where=GeoOptions.GB_ONLY), fill_value=0)
+        return self.congestion_income.iem_dispatch(where=GeoOptions.GB_ONLY).sub(
+            self.congestion_income.iem_fb_dispatch(where=GeoOptions.GB_ONLY),
+            fill_value=0
+        )
 
     @metric(restricted_to="dispatch")
     def renewable_dispatch(self):
