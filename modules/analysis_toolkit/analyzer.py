@@ -9,7 +9,7 @@ from typing import Literal
 from modules.analysis_toolkit.helpers.results_computer_base import ResultsComputerBase
 from modules.analysis_toolkit.helpers.results_computer_wrappers import metric
 from modules.analysis_toolkit.helpers.boundaries import get_fb_constraints, get_link_columns_in_ptdf, Boundaries
-from modules.analysis_toolkit.helpers.config.filepaths import get_etys_boundaries_geopandas_fp
+from modules.analysis_toolkit.helpers.config.filepaths import get_cfd_strike_prices_fp
 from modules.analysis_toolkit.helpers.index_finder import IndexFinder, GeoOptions
 from modules.analysis_toolkit.helpers.config.constants import CAPTURE_RATE_IC
 
@@ -550,6 +550,52 @@ class ResultsComputer(ResultsComputerBase):
     def consumer_costs_system(self, n: pypsa.Network, **kwargs):
         return self._consumer_costs_system(n, **kwargs)
 
+    def _get_cfd_strike_prices(self):
+        strike_prices = pd.read_csv(get_cfd_strike_prices_fp(), index_col="carrier").squeeze()
+        strike_prices.index = strike_prices.index.map({
+            "biomass": "solid biomass",
+            "onwind": "Onshore Wind",
+            "offwind-dc": "offwind-dc-fl-oh",
+            "solar": "solar-pv-utility",
+            "waste": "waste"
+        })
+        return strike_prices
+
+    def cfd_compensation_costs(self, scenario: Literal["sq", "iem", "iem_fb"], **kwargs):
+        match scenario:
+            case "sq":
+                n_d = self.ns.get_sq_dispatch()
+                n_r = self.ns.get_sq_redispatch()
+            case "iem":
+                n_d = self.ns.get_iem_dispatch()
+                n_r = self.ns.get_iem_redispatch()
+            case "iem_fb":
+                n_d = self.ns.get_iem_fb_dispatch()
+                n_r = self.ns.get_iem_fb_redispatch()
+
+        market_energy_volume = n_r.stats.supply(bus_carrier="AC", groupby=self.groupby, groupby_time=False) \
+            .query("bus.str.contains('GB ')")
+        dispatch_carriers = market_energy_volume.query("~name.str.contains('ramp')").reset_index()[["name", "carrier"]].set_index("name").to_dict()["carrier"]
+
+        strike_prices = self._get_cfd_strike_prices()
+        revenues_in_market = n_d.stats.revenue(bus_carrier="AC", groupby=self.groupby, groupby_time=False) \
+            .query("bus.str.contains('GB ') and carrier in @strike_prices.index") \
+            .groupby("carrier").sum()
+
+        redispatch_volume = n_r.stats.supply(bus_carrier="AC", groupby=self.groupby, groupby_time=False) \
+            .query("bus.str.contains('GB ') and carrier.str.contains('ramp')")
+        aux_df = redispatch_volume.index.get_level_values("name").to_series().str.replace(' ramp up', '').replace(
+            ' ramp down', '')
+        redispatch_volume["carrier_custom"] = aux_df.map(dispatch_carriers).values
+        redispatch_volume = redispatch_volume.groupby("carrier_custom").sum()
+
+        market_energy_volume = market_energy_volume.groupby("carrier").sum()
+        cfd_energy_volume = market_energy_volume.sub(redispatch_volume)
+
+        compensation_costs = cfd_energy_volume.mul(strike_prices, axis=0) \
+            .sub(revenues_in_market)
+        return compensation_costs
+
     @metric(restricted_to="dispatch")
     def producer_surplus_system(self, n: pypsa.Network, **kwargs):
         return self._producer_surplus_system(n, **kwargs)
@@ -782,12 +828,25 @@ if __name__ == "__main__":
         for year in [2030, 2040]
     }
 
-    #rc[2030].constraint_costs.iem_redispatch()
-    #rc[2030].congestion_income.compare_dispatch()
-    final_surplus_df = rc[2030].storage_surplus_system.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-    congestion_income_df = rc[2030].congestion_income.compare_dispatch().groupby(level = 0, axis = 1).sum().sum(axis = 0)/1e6
-
-    welfare_comparison = rc[2030].welfare_system.compare_dispatch()
-    price_spreads = rc[2030].interconnector_price_spreads.compare_dispatch()
+    rc[2030].cfd_compensation_costs(scenario="sq")
 
     print()
+
+    # redispatch total activation volume (countertrading can be computed in a similar way)
+    # redispatch_volume = pd.DataFrame(
+    #     {
+    #         f"redispatch_volume_ramp_{direction}": [
+    #             rc[2030].redispatched_volume.iem_redispatch().filter(like=f"ramp {direction}", axis=0).sum().sum()]
+    #         for direction in ["up", "down"]
+    #     }
+    # ).T
+    # countertrade_volume = pd.DataFrame(
+    #     {
+    #         f"countertrade_volume_ramp_{direction}": [
+    #             rc[2030].countertraded_volume.iem_redispatch().filter(like=f"ramp {direction}", axis=0).sum().sum()]
+    #         for direction in ["up", "down"]
+    #     }
+    # ).T
+
+    # to check the marginal costs of ramp components in the redispatch networks
+    # n_r.generators_t.marginal_cost.T.query("name.str.contains('ramp')").sort_index().T.describe().T
