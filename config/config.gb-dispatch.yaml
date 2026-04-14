@@ -5,6 +5,10 @@
 # Contains additional configuration options that overwrite the defaults
 # coming from the gb-dispatch-model.
 
+renewable:
+  "offwind-dc":
+    correction_factor: 0.70840 # 80% of default 0.8855 to align with reported FES2024 load factors
+
 # Need an entry such that Snakemake considers this a valid yaml file
 # Can be removed once there are other actual entries in this file
 place: holder
