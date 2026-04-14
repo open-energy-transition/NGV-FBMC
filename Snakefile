@@ -125,19 +125,7 @@ rule run_gbdispatchmodel_as_rule:
     output:
         networks_dispatch=expand(
             gbdispatchmodel(
-                "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
-            ),
-            planning_horizons=["2030", "2040"],
-        ),
-        networks_redispatch=expand(
-            gbdispatchmodel(
                 "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
-            ),
-            planning_horizons=["2030", "2040"],
-        ),
-        results_dispatch=expand(
-            gbdispatchmodel(
-                "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
             ),
             planning_horizons=["2030", "2040"],
         ),
