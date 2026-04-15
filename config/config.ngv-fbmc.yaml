@@ -13,6 +13,19 @@ scenarios:
 
 fes_scenario: HT # or CF
 
+calibration:
+  capacity_multipliers:
+    # These multipliers are only applied to capacities in the GB model.
+    # They scale the nameplate capacity of generators with the matching carrier
+    # Currently only applied to "Generator" components
+    offwind-dc:
+      # Multipliers selected for sensitivity
+      2030: 1.0
+      2040: 1.0
+    onwind:
+      2030: 1.0
+      2040: 1.0
+
 planning_horizons:
 - 2030
 - 2040

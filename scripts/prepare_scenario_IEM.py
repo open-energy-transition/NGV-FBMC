@@ -715,6 +715,30 @@ def patch_OH_interconnector_capacities(
     return n
 
 
+def modify_generation_capacities(
+    n: pypsa.Network, capacity_multipliers: dict[str, dict[int, float]], year: int
+) -> pypsa.Network:
+    """
+    Modifies the generation capacities in the GB model according to the specified multipliers.
+
+    Used for calibration to adjust the generation capacities in the GB model.
+    """
+    for carrier, multiplier in capacity_multipliers.items():
+        gens = n.c.generators.static.query(
+            "`carrier` == @carrier", local_dict={"carrier": carrier}
+        )
+
+        multiplier = multiplier[year]
+
+        logger.info(
+            f"Modifying generation capacities for {carrier} generators by a multiplier of {multiplier}: {gens.index.tolist()}"
+        )
+
+        n.c.generators.static.loc[gens.index, "p_nom"] *= multiplier
+
+    return n
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -745,6 +769,13 @@ if __name__ == "__main__":
     # Reset networks before merging
     n_gb = reset_network(n_gb)
     n_eur = reset_network(n_eur)
+
+    # For calibration: Modify the generation capacities according to config multipliers
+    n_gb = modify_generation_capacities(
+        n=n_gb,
+        capacity_multipliers=snakemake.params.capacity_multipliers,
+        year=int(snakemake.wildcards.planning_horizons),
+    )
 
     # Patch: Interconnector capacities for stranded OH in openTYNDP. Fixed upstream with https://github.com/open-energy-transition/open-tyndp/pull/568
     # But that is not pulled into the project, so we do a manual patch here

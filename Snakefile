@@ -213,6 +213,7 @@ rule prepare_scenario_IEM:
     params:
         carrier_map=config["carrier_mapping"],
         time_aggregation=config["time_aggregation"],
+        capacity_multipliers=config["calibration"]["capacity_multipliers"],
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
