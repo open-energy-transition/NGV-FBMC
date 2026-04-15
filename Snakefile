@@ -217,7 +217,7 @@ rule prepare_scenario_IEM:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/{config['fes_scenario']}/unconstrained_clustered/{planning_horizons}.nc"
+            f"resources/GB-ETYS-subset/networks/{config['fes_scenario']}/unconstrained_clustered/{{planning_horizons}}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
