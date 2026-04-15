@@ -752,6 +752,10 @@ if __name__ == "__main__":
         n=n_eur, planning_horizon=int(snakemake.wildcards.planning_horizons)
     )
 
+    # Patch: This Link was not originally in the data; unclear where it is coming from
+    # but it is not supposed to be here. Manually cleaned up until fixed upstream
+    n_gb.remove("Link", "relation/15777152-320-DC+1")
+
     # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
 
