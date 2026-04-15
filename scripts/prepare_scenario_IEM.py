@@ -784,8 +784,11 @@ if __name__ == "__main__":
     )
 
     # Patch: This Link was not originally in the data; unclear where it is coming from
-    # but it is not supposed to be here. Manually cleaned up until fixed upstream
-    n_gb.remove("Link", "relation/15777152-320-DC+1")
+    # but it is not supposed to be here. Manually cleaned up until fixed upstream.
+    # Might be related to clustering not working fully deterministically.
+    if "relation/15777152-320-DC+1" in n_gb.c["Link"].static.index:
+        n_gb.remove("Link", "relation/15777152-320-DC+1")
+        logger.info("Removed unexpected Link relation/15777152-320-DC+1 from GB model")
 
     # Merge the two networks
     n_merged = merge_gb_tyndp(n_gb.copy(), n_eur.copy(), carrier_map)
