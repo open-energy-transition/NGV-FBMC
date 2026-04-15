@@ -378,7 +378,9 @@ rule calc_interconnector_bid_offer_profile:
     message:
         "Calculate interconnector bid/offer profiles"
     input:
-        bids_and_offers=rules.run_gbdispatchmodel_as_rule.output.bid_offer_multipliers,
+        bids_and_offers=gbdispatchmodel(
+            f"resources/GB-ETYS-subset/gb-model/{config['fes_scenario']}/bid_offer_multipliers.csv"
+        ),
         unconstrained_result="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
     output:
         bid_offer_profile="resources/redispatch/interconnector_bid_offer_profile/{scenario}/{planning_horizons}.csv",
@@ -406,7 +408,7 @@ rule prepare_redispatch:
             "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
         ),
         bids_and_offers=gbdispatchmodel(
-            "resources/GB-ETYS-subset/gb-model/CF/bid_offer_multipliers.csv"
+            f"resources/GB-ETYS-subset/gb-model/{config['fes_scenario']}/bid_offer_multipliers.csv"
         ),
     output:
         network="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
@@ -444,7 +446,7 @@ rule solve_redispatch:
         future_etys_caps=branch(
             config["etys"]["use_future_capacities"],
             gbdispatchmodel(
-                "resources/GB-ETYS-subset/gb-model/CF/future_etys_boundary_capabilities.csv"
+                f"resources/GB-ETYS-subset/gb-model/{config['fes_scenario']}/future_etys_boundary_capabilities.csv"
             ),
             [],
         ),
