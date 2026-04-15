@@ -183,6 +183,7 @@ carrier_mapping:
     Residential Heat DSR shift: battery charger
     Residential Heat unmanaged load: electricity distribution grid
     EV V2G: home battery discharger
+    Transmission-level + T&D losses unmanaged load: electricity distribution grid
   Load:
     AC: electricity
     Baseline Electricity: electricity
@@ -190,6 +191,7 @@ carrier_mapping:
     H2: H2 exogenous demand
     I&C Heat: electricity
     Residential Heat: electricity
+    Transmission-level + T&D losses: electricity
   StorageUnit:
     Battery Storage: battery
     PHS: hydro-phs
