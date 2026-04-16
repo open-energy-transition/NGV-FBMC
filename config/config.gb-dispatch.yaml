@@ -5,6 +5,12 @@
 # Contains additional configuration options that overwrite the defaults
 # coming from the gb-dispatch-model.
 
-# Need an entry such that Snakemake considers this a valid yaml file
-# Can be removed once there are other actual entries in this file
-place: holder
+renewable:
+  onwind:
+    correction_factor: 0.8 # 80% of default 1 to align with reported FES2024 load factors
+  "offwind-dc":
+    correction_factor: 0.664125 # 75% of default 0.8855 to align with reported FES2024 load factors
+
+dukes-fuel-prices:
+  sheet-config:
+    skiprows: 15 # Fix - currently necessary as data contains an unexpected comment row.

@@ -11,6 +11,21 @@ scenarios:
 - SQ
 - FBMC
 
+fes_scenario: HT # or CF
+
+calibration:
+  capacity_multipliers:
+    # These multipliers are only applied to capacities in the GB model.
+    # They scale the nameplate capacity of generators with the matching carrier
+    # Currently only applied to "Generator" components
+    offwind-dc:
+      # Multipliers selected for sensitivity
+      2030: 1.0
+      2040: 1.0
+    onwind:
+      2030: 1.0
+      2040: 1.0
+
 planning_horizons:
 - 2030
 - 2040
@@ -183,6 +198,7 @@ carrier_mapping:
     Residential Heat DSR shift: battery charger
     Residential Heat unmanaged load: electricity distribution grid
     EV V2G: home battery discharger
+    Transmission-level + T&D losses unmanaged load: electricity distribution grid
   Load:
     AC: electricity
     Baseline Electricity: electricity
@@ -190,6 +206,7 @@ carrier_mapping:
     H2: H2 exogenous demand
     I&C Heat: electricity
     Residential Heat: electricity
+    Transmission-level + T&D losses: electricity
   StorageUnit:
     Battery Storage: battery
     PHS: hydro-phs
@@ -239,6 +256,10 @@ solving:
     threads: 8
     gurobi-default:
       BarConvTol: 1.e-6
+      NumericFocus: 0
+      MemLimit: 50
+      PreSparsify: 2
+      Presolve: 2
       IISMethod: 1
     cplex-default:
       barrier.convergetol: 1.e-6

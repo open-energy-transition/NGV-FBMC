@@ -125,33 +125,35 @@ rule run_gbdispatchmodel_as_rule:
     output:
         networks_dispatch=expand(
             gbdispatchmodel(
-                "resources/GB-ETYS-subset/networks/HT/constrained_clustered/{planning_horizons}.nc"
+                "resources/GB-ETYS-subset/networks/{fes_scenario}/constrained_clustered/{planning_horizons}.nc"
             ),
+            fes_scenario=["HT", "CF"],
             planning_horizons=["2030", "2040"],
         ),
         networks_redispatch=expand(
             gbdispatchmodel(
-                "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+                "resources/GB-ETYS-subset/networks/{fes_scenario}/unconstrained_clustered/{planning_horizons}.nc"
             ),
-            planning_horizons=["2030", "2040"],
-        ),
-        results_dispatch=expand(
-            gbdispatchmodel(
-                "results/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
-            ),
+            fes_scenario=["HT", "CF"],
             planning_horizons=["2030", "2040"],
         ),
         renewable_strike_prices=gbdispatchmodel(
             "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
         ),
-        bid_offer_multipliers=gbdispatchmodel(
-            "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
+        bid_offer_multipliers=expand(
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/gb-model/{fes_scenario}/bid_offer_multipliers.csv"
+            ),
+            fes_scenario=["HT", "CF"],
         ),
         current_etys_caps=gbdispatchmodel(
             "resources/GB-ETYS-subset/gb-model/etys_boundary_capabilities.csv"
         ),
-        future_etys_caps=gbdispatchmodel(
-            "resources/GB-ETYS-subset/gb-model/HT/future_etys_boundary_capabilities.csv"
+        future_etys_caps=expand(
+            gbdispatchmodel(
+                "resources/GB-ETYS-subset/gb-model/{fes_scenario}/future_etys_boundary_capabilities.csv"
+            ),
+            fes_scenario=["HT", "CF"],
         ),
         boundary_crossings=gbdispatchmodel(
             "resources/GB-ETYS-subset/etys_boundary_crossings.csv"
@@ -211,11 +213,12 @@ rule prepare_scenario_IEM:
     params:
         carrier_map=config["carrier_mapping"],
         time_aggregation=config["time_aggregation"],
+        capacity_multipliers=config["calibration"]["capacity_multipliers"],
     input:
         # Use inputs from both models with fixed capacities before they are passed to
         # the optimal dispatch run
         gb_model=gbdispatchmodel(
-            "resources/GB-ETYS-subset/networks/HT/unconstrained_clustered/{planning_horizons}.nc"
+            f"resources/GB-ETYS-subset/networks/{config['fes_scenario']}/unconstrained_clustered/{{planning_horizons}}.nc"
         ),
         iem_model=ngviemmodel(
             "results/ngv-iem/latest/networks/base_s_all___{planning_horizons}_no_ce.nc",
@@ -375,7 +378,9 @@ rule calc_interconnector_bid_offer_profile:
     message:
         "Calculate interconnector bid/offer profiles"
     input:
-        bids_and_offers=rules.run_gbdispatchmodel_as_rule.output.bid_offer_multipliers,
+        bids_and_offers=gbdispatchmodel(
+            f"resources/GB-ETYS-subset/gb-model/{config['fes_scenario']}/bid_offer_multipliers.csv"
+        ),
         unconstrained_result="results/dispatch/networks/{scenario}/{planning_horizons}.nc",
     output:
         bid_offer_profile="resources/redispatch/interconnector_bid_offer_profile/{scenario}/{planning_horizons}.csv",
@@ -403,7 +408,7 @@ rule prepare_redispatch:
             "resources/GB-ETYS-subset/gb-model/CfD_strike_prices.csv"
         ),
         bids_and_offers=gbdispatchmodel(
-            "resources/GB-ETYS-subset/gb-model/HT/bid_offer_multipliers.csv"
+            f"resources/GB-ETYS-subset/gb-model/{config['fes_scenario']}/bid_offer_multipliers.csv"
         ),
     output:
         network="resources/redispatch/networks/{scenario}/{planning_horizons}.nc",
@@ -441,7 +446,7 @@ rule solve_redispatch:
         future_etys_caps=branch(
             config["etys"]["use_future_capacities"],
             gbdispatchmodel(
-                "resources/GB-ETYS-subset/gb-model/HT/future_etys_boundary_capabilities.csv"
+                f"resources/GB-ETYS-subset/gb-model/{config['fes_scenario']}/future_etys_boundary_capabilities.csv"
             ),
             [],
         ),
