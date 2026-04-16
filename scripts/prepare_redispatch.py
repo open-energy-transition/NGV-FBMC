@@ -1071,12 +1071,59 @@ def convert_boundary_crossings(
         )
 
 
+def reset_interconnector_operating_limits(
+    network: pypsa.Network, network_ref: pypsa.Network
+) -> pypsa.Network:
+    """
+    For the SQ scenario, reset the operating limits of the interconnectors to the original values in the reference network.
+
+    Whilst in the SQ dispatch scenario the interconnector operating limits are provided through the market outcomes,
+    in the redispatch case we want to be able to make full use of the interconnector capacities up to their technical limits.
+
+    Parameters
+    ----------
+    network: pypsa.Network
+        Network for which the interconnector limits will be reset.
+    network_ref: pypsa.Network
+        Reference network with the to-be-used interconnector limits.
+
+    Returns
+    -------
+    pypsa.Network
+        Network with reset interconnector limits.
+    """
+
+    interconnectors = filter_interconnectors(
+        network.c.links.static, "carrier in ['DC']"
+    ).index
+    interconnectors_ref = filter_interconnectors(
+        network_ref.c.links.static, "carrier in ['DC']"
+    ).index
+    logger.info(
+        f"Resetting operating limits for {len(interconnectors)} interconnectors to the original values in the reference network"
+    )
+
+    if not interconnectors.equals(interconnectors_ref):
+        raise ValueError(
+            "Not all interconnectors in the network are present in the reference network. Cannot reset operating limits."
+        )
+
+    network.c.links.dynamic.p_min_pu.loc[:, interconnectors] = (
+        network_ref.c.links.dynamic.p_min_pu.loc[:, interconnectors_ref]
+    )
+    network.c.links.dynamic.p_max_pu.loc[:, interconnectors] = (
+        network_ref.c.links.dynamic.p_max_pu.loc[:, interconnectors_ref]
+    )
+
+    return network
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            Path(__file__).stem, planning_horizons=2030, scenario="IEM"
+            Path(__file__).stem, planning_horizons=2030, scenario="SQ"
         )
 
     configure_logging(snakemake)
@@ -1133,6 +1180,19 @@ if __name__ == "__main__":
     network = fix_dispatch(
         base_network=network, dispatch_result=dispatch_result, gb_buses=gb_buses
     )
+
+    # SQ scenario only:
+    # Because we use different p_min_pu and p_max_pu limits for the interconnectors,
+    # and we use the dispatch network and the base network for calculations,
+    # we reset both of their operating limits to match the original technical limits
+    # before we calculate e.g. ramp up / ramp down rates
+    if snakemake.wildcards.scenario == "SQ":
+        network = reset_interconnector_operating_limits(
+            network, network_ref=pypsa.Network(snakemake.input.iem_network)
+        )
+        dispatch_result = reset_interconnector_operating_limits(
+            dispatch_result, network_ref=pypsa.Network(snakemake.input.iem_network)
+        )
 
     network = create_up_down_plants(
         base_network=network,
