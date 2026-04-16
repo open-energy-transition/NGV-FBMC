@@ -257,7 +257,6 @@ solving:
     gurobi-default:
       BarConvTol: 1.e-6
       NumericFocus: 0
-      MemLimit: 50
       PreSparsify: 2
       Presolve: 2
       IISMethod: 1
