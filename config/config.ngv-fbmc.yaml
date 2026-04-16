@@ -256,6 +256,10 @@ solving:
     threads: 8
     gurobi-default:
       BarConvTol: 1.e-6
+      NumericFocus: 0
+      MemLimit: 50
+      PreSparsify: 2
+      Presolve: 2
       IISMethod: 1
     cplex-default:
       barrier.convergetol: 1.e-6
