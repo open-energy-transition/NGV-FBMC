@@ -1123,7 +1123,7 @@ if __name__ == "__main__":
         from scripts._helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            Path(__file__).stem, planning_horizons=2030, scenario="IEM"
+            Path(__file__).stem, planning_horizons=2030, scenario="SQ"
         )
 
     configure_logging(snakemake)
@@ -1182,9 +1182,16 @@ if __name__ == "__main__":
     )
 
     # SQ scenario only:
+    # Because we use different p_min_pu and p_max_pu limits for the interconnectors,
+    # and we use the dispatch network and the base network for calculations,
+    # we reset both of their operating limits to match the original technical limits
+    # before we calculate e.g. ramp up / ramp down rates
     if snakemake.wildcards.scenario == "SQ":
         network = reset_interconnector_operating_limits(
             network, network_ref=pypsa.Network(snakemake.input.iem_network)
+        )
+        dispatch_result = reset_interconnector_operating_limits(
+            dispatch_result, network_ref=pypsa.Network(snakemake.input.iem_network)
         )
 
     network = create_up_down_plants(
