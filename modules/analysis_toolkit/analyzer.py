@@ -31,6 +31,9 @@ def _show_sum_by(result: pd.DataFrame, labels: list[str]):
 def _scale(result: pd.DataFrame, factor: float):
     return result * factor
 
+def _print_axes_levels(result: pd.DataFrame):
+    print(f"index: {result.columns.names}, columns: {result.index.names}")
+
 def format_result(result: pd.DataFrame, sum_by: list[str], factor: float = 1e-6):
     # Warning: be careful of what is being aggregated and if it requires an abs() before summing, or if it requires
     #   a different aggregation function. Only use this function when you are sure of the result it will give you.
@@ -58,7 +61,11 @@ class ResultsComputer(ResultsComputerBase):
             def wrapper(*args, **kwargs):
                 if func.__qualname__.startswith("ResultsComputer.") and not name.startswith("_"):
                     print(f"Calling method: {name}")
-                return attr(*args, **kwargs)
+                    res = attr(*args, **kwargs)
+                    _print_axes_levels(res)
+                    return res
+                else:
+                    return attr(*args, **kwargs)
             return wrapper
         return attr
 
@@ -189,6 +196,10 @@ class ResultsComputer(ResultsComputerBase):
         constraint_carriers = n.carriers.filter(
             regex=r" ramp (up|down)$", axis=0
         ).index.tolist() + ["load"]
+        
+        redispatch_carriers_storage = n.carriers.filter(
+            regex=r"StorageUnit ramp (up|down)$", axis=0
+        ).index.tolist()
 
         # Exclude the EU fuel buses ramp up/down and the Store ramp up/down
         constraint_costs = n.statistics.opex(
@@ -196,9 +207,25 @@ class ResultsComputer(ResultsComputerBase):
             groupby=["name", "carrier", "bus", "country"],
             carrier=constraint_carriers,
             drop_zero=False
-        ).query("not name.str.contains('EU gas|EU waste|EU solid biomass')").drop(["Store ramp up", "Store ramp down"], level = "carrier")
+        ) \
+            .query("not name.str.contains('EU gas|EU waste|EU solid biomass')") \
+            .drop(["Store ramp up", "Store ramp down"], level = "carrier") \
+            .drop(redispatch_carriers_storage, level = "carrier")
 
-        return constraint_costs
+        constraint_costs_storage = n.statistics.revenue(  # WARNING: REDISPATCH COSTS OF STORAGE ARE NOW BASED ON PRICES TO REFLECT OPPORTUNITY COSTS
+            bus_carrier=["AC", "AC_OH"],
+            groupby_time=self.groupby_time,
+            groupby=["name", "carrier", "bus", "country"],
+            carrier=redispatch_carriers_storage,
+            drop_zero=False
+        )
+
+        constraint_costs_total = pd.concat(
+            [constraint_costs, constraint_costs_storage],
+            axis=0
+        )
+
+        return constraint_costs_total
 
     @metric(restricted_to= "redispatch")
     def constraint_costs(self, n: pypsa.Network, **kwargs): # To be used in the re-dispatch model only
@@ -266,7 +293,16 @@ class ResultsComputer(ResultsComputerBase):
             drop_zero=False
         )
 
-        redispatch_costs_storage = n.statistics.opex(
+        # WARNING: REDISPATCH COSTS OF STORAGE ARE NOW BASED ON PRICES TO REFLECT OPPORTUNITY COSTS
+        # redispatch_costs_storage = n.statistics.opex(
+        #     groupby_time=self.groupby_time,
+        #     groupby=["name", "carrier", "bus", "country"],
+        #     carrier=redispatch_carriers_storage,
+        #     drop_zero=False
+        # )
+        # WARNING: REDISPATCH COSTS OF STORAGE ARE NOW BASED ON PRICES TO REFLECT OPPORTUNITY COSTS
+        redispatch_costs_storage = n.statistics.revenue(
+            bus_carrier=["AC", "AC_OH"],
             groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_storage,
@@ -525,12 +561,15 @@ class ResultsComputer(ResultsComputerBase):
     def _welfare_system(self, n: pypsa.Network, **kwargs):
         """Internal helper: Computes the aggregated welfare components for a single network."""
 
-        # 1. Fetch the data from the helpers and crush them safely into single floats
-        consumer_total = self._consumer_costs_system(n, **kwargs).sum().sum()/1e6
-        producer_total = self._producer_surplus_system(n, **kwargs).sum().sum()/1e6
-        storage_total = self._storage_surplus_system(n, **kwargs).sum().sum()/1e6
+        # 0. Get the weights to correct for time segmentation
+        weights = n.snapshot_weightings["generators"]
 
-        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.SYSTEM_WIDE).values))/1e6
+        # 1. Fetch the data from the helpers and crush them safely into single floats
+        consumer_total = self._consumer_costs_system(n, **kwargs).mul(weights, level="snapshot", axis=1).sum().sum()/1e6
+        producer_total = self._producer_surplus_system(n, **kwargs).mul(weights, level="snapshot", axis=1).sum().sum()/1e6
+        storage_total = self._storage_surplus_system(n, **kwargs).mul(weights, level="snapshot", axis=1).sum().sum()/1e6
+
+        congestion_total = float(np.nansum(self._congestion_income(n, where=GeoOptions.SYSTEM_WIDE).mul(weights, level="snapshot", axis=1).values))/1e6
 
         # 2. Calculate the grand total
         total_welfare = producer_total + consumer_total + storage_total + congestion_total
@@ -551,7 +590,8 @@ class ResultsComputer(ResultsComputerBase):
         return self._consumer_costs_system(n, **kwargs)
 
     def _get_cfd_strike_prices(self):
-        strike_prices = pd.read_csv(get_cfd_strike_prices_fp(), index_col="carrier").squeeze()
+        gbp_to_eur = 1.1632
+        strike_prices = pd.read_csv(get_cfd_strike_prices_fp(), index_col="carrier").squeeze() * gbp_to_eur
         strike_prices.index = strike_prices.index.map({
             "biomass": "solid biomass",
             "onwind": "Onshore Wind",
@@ -656,21 +696,6 @@ class ResultsComputer(ResultsComputerBase):
             fill_value=0
         )
 
-    @metric(restricted_to="dispatch")
-    def renewable_dispatch(self):
-        # [optional] renewable production in MW that can help find patterns and correlations
-        return NotImplementedError
-
-    @metric(restricted_to="dispatch")
-    def consumption(self):
-        # [optional] consumption in MW that can help find patterns and correlations
-        return NotImplementedError
-
-    @metric(restricted_to="redispatch")
-    def renewable_redispatch(self):
-        # [optional] ramped up and down renewable production in MW that can help find patterns and correlations
-        return NotImplementedError
-
     def _redispatched_volume(self, n: pypsa.Network):
         redispatch_carriers_generators = n.carriers.filter(
             regex=r"Generator ramp (up|down)$", axis=0
@@ -689,6 +714,10 @@ class ResultsComputer(ResultsComputerBase):
         n.links["ramp carrier"] = ""
         n.storage_units["ramp carrier"] = ""
 
+        n.generators["ramp direction"] = n.generators.carrier.str.extract("(ramp\s+\w+)")
+        n.links["ramp direction"] = n.links.carrier.str.extract("(ramp\s+\w+)")
+        n.storage_units["ramp direction"] = n.storage_units.carrier.str.extract("(ramp\s+\w+)")
+
         for bus in buses:
             str_to_replace = f"{bus} "
             gen_select = n.generators.index.str.contains("ramp") & (n.generators["bus"] == bus)
@@ -700,11 +729,13 @@ class ResultsComputer(ResultsComputerBase):
             storage_select = n.storage_units.index.str.contains("ramp") & (n.storage_units["bus"] == bus)
             n.storage_units.loc[storage_select, "ramp carrier"] = n.storage_units.loc[storage_select].index.str.replace(str_to_replace, "")
 
+            n.generators.loc[n.generators.carrier=='load', "ramp direction"] = "ramp up"
+
         redispatch_volume_generators = n.statistics.energy_balance(
             comps=["Generator"],
             bus_carrier="AC",
             groupby_time=self.groupby_time,
-            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
+            groupby=["name", "carrier", "bus", "country", "ramp carrier", "ramp direction"],
             carrier=redispatch_carriers_generators,
             drop_zero=False
         ).query("not bus.str.contains('EU ')").abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
@@ -713,7 +744,7 @@ class ResultsComputer(ResultsComputerBase):
             comps=["Link"],
             bus_carrier="AC",
             groupby_time=self.groupby_time,
-            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
+            groupby=["name", "carrier", "bus", "country", "ramp carrier", "ramp direction"],
             carrier=redispatch_carriers_links,
             drop_zero=False
         ).abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
@@ -721,7 +752,7 @@ class ResultsComputer(ResultsComputerBase):
         redispatch_volume_storage = n.statistics.energy_balance(
             bus_carrier="AC",
             groupby_time=self.groupby_time,
-            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
+            groupby=["name", "carrier", "bus", "country", "ramp carrier", "ramp direction"],
             carrier=redispatch_carriers_storage,
             drop_zero=False
         ).abs()
@@ -741,7 +772,7 @@ class ResultsComputer(ResultsComputerBase):
             comps=["Generator"],
             bus_carrier="AC",
             groupby_time=self.groupby_time,
-            groupby=["name", "carrier", "bus", "country", "ramp carrier"],
+            groupby=["name", "carrier", "bus", "country", "ramp carrier", "ramp direction"],
             carrier=counter_trading_carriers,
             drop_zero=False
         ).abs()  # take the absolute value to have a positive volume for both ramp up and ramp down
@@ -752,7 +783,7 @@ class ResultsComputer(ResultsComputerBase):
             comps=["Generator"],
             bus_carrier="AC",
             groupby_time=self.groupby_time,
-            groupby=["name", "carrier", "bus", "country"],
+            groupby=["name", "carrier", "bus", "country", "ramp carrier", "ramp direction"],
             carrier="load",
             drop_zero=False
         ).abs()  # take the absolute value to have a positive volume
@@ -803,10 +834,11 @@ class ResultsComputer(ResultsComputerBase):
     @metric(restricted_to="redispatch")
     def average_ramping_costs_per_mw(self, n: pypsa.Network, **kwargs):
         cost = self._congestion_management_cost_without_shedding(n).droplevel(["bus", "country"]) # drop the bus and country level to have the same index as the volume
-        volume = self._congestion_management_volume_without_shedding(n).droplevel(["bus", "country", "ramp carrier"])  # drop the bus and country level to have the same index as the volume
+        volume = self._congestion_management_volume_without_shedding(n).droplevel(["bus", "country", "ramp carrier", "ramp direction"])  # drop the bus and country level to have the same index as the volume
 
         def total_in_direction(df, direction):
-            return df.filter(like=f"ramp {direction}", axis=0).sum().sum()
+            weights = n.snapshot_weightings["generators"]
+            return df.filter(like=f"ramp {direction}", axis=0).mul(weights, level="snapshot", axis=1).sum().sum()
 
         return pd.Series(
             {
@@ -815,9 +847,39 @@ class ResultsComputer(ResultsComputerBase):
             }
         )
 
+    @metric
+    def net_position(self, n: pypsa.Network, **kwargs):
+        return n.statistics.energy_balance(
+            bus_carrier=["AC"],
+            groupby_time=self.groupby_time,
+            groupby=self.groupby) \
+            .drop(["DC", "AC"], level="carrier")
+
+    @metric(restricted_to="redispatch")
+    def used_redispatch_capacity_pu(self, n: pypsa.Network, **kwargs):
+        used_capacity = n.components.generators.dynamic["p"].div(n.generators["p_nom"]).div(
+            n.components.generators.dynamic["p_max_pu"])
+        used_capacity.loc[:, used_capacity.filter(like="ramp down").columns] = \
+        n.components.generators.dynamic["p"].div(n.generators["p_nom"]).div(
+            n.components.generators.dynamic["p_min_pu"]).loc[:, used_capacity.filter(like="ramp down").columns]
+        return used_capacity
+
+    @metric(restricted_to="redispatch")
+    def available_redispatch_capacity_mw(self, n: pypsa.Network, **kwargs):
+        available_redispatch_capacity_in_mw = n.components.generators.dynamic["p"] * np.nan
+        available_redispatch_capacity_in_mw.loc[:, available_redispatch_capacity_in_mw.filter(like="ramp up").columns] = \
+        n.components.generators.dynamic["p_max_pu"].mul(n.generators["p_nom"]).sub(
+            n.components.generators.dynamic["p"]).loc[
+            :, available_redispatch_capacity_in_mw.filter(like="ramp up").columns]
+        available_redispatch_capacity_in_mw.loc[
+            :, available_redispatch_capacity_in_mw.filter(like="ramp down").columns] = - \
+        n.components.generators.dynamic["p_min_pu"].mul(n.generators["p_nom"]).add(
+            n.components.generators.dynamic["p"]).loc[
+            :, available_redispatch_capacity_in_mw.filter(like="ramp down").columns]
+        return available_redispatch_capacity_in_mw
+
 
 if __name__ == "__main__":
-    from modules.analysis_toolkit.helpers.plotting import TimeSeriesPlot, HistogramPlot, BarChartPlot, WaterfallPlot
 
     study_years = [2030, 2040]
     rc = {
