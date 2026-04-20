@@ -164,14 +164,16 @@ def add_redispatch_penalty(n: pypsa.Network, snakemake: Snakemake) -> None:
         n (pypsa.Network): The PyPSA network to update.
         snakemake (snakemake.Snakemake): The snakemake object for parameters and config.
     """
-    idx = n.generators.filter(regex="ramp (up|down)").index
+    idx = n.generators.filter(regex="ramp (up|down)", axis=0).index
     is_neg = n.get_switchable_as_dense("Generator", "p_min_pu")[idx] < 0
     penalty = snakemake.params.redispatch_profit_mitigation_penalty
     obj_cost = is_neg.replace({True: -penalty, False: penalty}).stack().to_xarray()
     gen_p = n.model["Generator-p"].sel(**obj_cost.coords)
     n.model.objective += (obj_cost * gen_p * n.snapshot_weightings["objective"]).sum()
     logger.info(
-        f"Added redispatch penalty of {penalty} EUR/MWh to the objective function to mitigate profit manipulation."
+        f"Added redispatch penalty of {penalty} EUR/MWh to the following number of "
+        "redispatch generators in the objective function to mitigate profit manipulation:\n"
+        f"{n.generators.loc[idx].carrier.value_counts()}"
     )
 
 
