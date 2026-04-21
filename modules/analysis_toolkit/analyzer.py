@@ -724,26 +724,21 @@ class ResultsComputer(ResultsComputerBase):
         n.storage_units["ramp direction"] = n.storage_units.carrier.str.extract("(ramp\s+\w+)")
 
         for bus in buses:
-            str_to_replace = f"({bus} 0 | ramp up| ramp down)"
+            str_to_replace = f"({bus} |0 | ramp up| ramp down|-20\d0-\d)"
             gen_select = n.generators.index.str.contains("ramp") & (n.generators["bus"] == bus)
             n.generators.loc[gen_select, "ramp carrier"] = n.generators.loc[gen_select].index.str.replace(str_to_replace, "", regex=True)
 
-            interconnectors_ramp_up = [f"{ic} ramp up" for ic in IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY).to_list()]
-            interconnectors_ramp_down = [f"{ic} ramp down" for ic in IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY).to_list()]
-            ic_up_select = n.generators.index.isin(interconnectors_ramp_up)
-            ic_down_select = n.generators.index.isin(interconnectors_ramp_down)
-            n.generators.loc[ic_up_select, "ramp carrier"] = "Interconnector ramp up"
-            n.generators.loc[ic_down_select, "ramp carrier"] = "Interconnector ramp down"
-
-            str_to_replace = f"({bus} | ramp up| ramp down|-20\d0-\d|-20\d0-\d)"
             link_select = n.links.index.str.contains("ramp") & ((n.links["bus0"] == bus) | (n.links["bus1"] == bus))
             n.links.loc[link_select, "ramp carrier"] = n.links.loc[link_select].index.str.replace(str_to_replace, "", regex=True)
 
-            str_to_replace = f"({bus} | ramp up| ramp down|-20\d0-\d|-20\d0-\d)"
-            storage_select = n.generators.index.str.contains("ramp") & (n.generators["bus"] == bus)
-            n.generators.loc[storage_select, "ramp carrier"] = n.generators.loc[storage_select].index.str.replace(str_to_replace, "", regex=True)
+        interconnectors_ramp_up = [f"{ic} ramp up" for ic in IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY).to_list()]
+        interconnectors_ramp_down = [f"{ic} ramp down" for ic in IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY).to_list()]
+        ic_up_select = n.generators.index.isin(interconnectors_ramp_up)
+        ic_down_select = n.generators.index.isin(interconnectors_ramp_down)
+        n.generators.loc[ic_up_select, "ramp carrier"] = "Interconnector ramp up"
+        n.generators.loc[ic_down_select, "ramp carrier"] = "Interconnector ramp down"
 
-            n.generators.loc[n.generators.carrier=='load', "ramp direction"] = "ramp up"
+        n.generators.loc[n.generators.carrier=='load', "ramp direction"] = "ramp up"
 
         redispatch_volume_generators = n.statistics.energy_balance(
             comps=["Generator"],
@@ -901,9 +896,9 @@ class ResultsComputer(ResultsComputerBase):
         constraint_volume = self.constraint_management_volume.compare_redispatch()
         constraint_volume = constraint_volume \
                                 .groupby("scenario", axis=1).sum() \
-                                .drop(["StorageUnit ramp up", "StorageUnit ramp down"], level="carrier") \
                                 .groupby(["ramp carrier", "ramp direction"]).sum() \
                                 .sort_index(level="ramp direction") / 1e6
+        # .drop(["StorageUnit ramp up", "StorageUnit ramp down"], level="carrier") \
         return constraint_volume
 
     def resolved_congestion_loading(self):
