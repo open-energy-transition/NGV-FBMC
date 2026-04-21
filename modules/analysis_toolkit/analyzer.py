@@ -162,6 +162,11 @@ class ResultsComputer(ResultsComputerBase):
         loading = boundary_flows.div(capacity)
         return loading.clip(lower=0)
 
+    def boundary_capacities(self, n: pypsa.Network, **kwargs):
+        boundaries = Boundaries(network=n, year=self.year)
+        capacities = boundaries.get_capacities()
+        return capacities
+
     @metric
     def boundary_flows(self, n: pypsa.Network, which: Literal["ptdf", "actual"], **kwargs):
         if which == "ptdf":
@@ -293,21 +298,21 @@ class ResultsComputer(ResultsComputerBase):
             drop_zero=False
         )
 
-        # WARNING: REDISPATCH COSTS OF STORAGE ARE NOW BASED ON PRICES TO REFLECT OPPORTUNITY COSTS
-        # redispatch_costs_storage = n.statistics.opex(
-        #     groupby_time=self.groupby_time,
-        #     groupby=["name", "carrier", "bus", "country"],
-        #     carrier=redispatch_carriers_storage,
-        #     drop_zero=False
-        # )
-        # WARNING: REDISPATCH COSTS OF STORAGE ARE NOW BASED ON PRICES TO REFLECT OPPORTUNITY COSTS
-        redispatch_costs_storage = n.statistics.revenue(
-            bus_carrier=["AC", "AC_OH"],
+        # WARNING: we might need the code below instead
+        redispatch_costs_storage = n.statistics.opex(
             groupby_time=self.groupby_time,
             groupby=["name", "carrier", "bus", "country"],
             carrier=redispatch_carriers_storage,
             drop_zero=False
         )
+        # WARNING: REDISPATCH COSTS OF STORAGE ARE NOW BASED ON PRICES TO REFLECT OPPORTUNITY COSTS
+        # redispatch_costs_storage = n.statistics.revenue(
+        #     bus_carrier=["AC", "AC_OH"],
+        #     groupby_time=self.groupby_time,
+        #     groupby=["name", "carrier", "bus", "country"],
+        #     carrier=redispatch_carriers_storage,
+        #     drop_zero=False
+        # )
 
         redispatch_costs_total = pd.concat(
             [redispatch_costs_generators, redispatch_costs_links, redispatch_costs_storage],
@@ -719,15 +724,24 @@ class ResultsComputer(ResultsComputerBase):
         n.storage_units["ramp direction"] = n.storage_units.carrier.str.extract("(ramp\s+\w+)")
 
         for bus in buses:
-            str_to_replace = f"{bus} "
+            str_to_replace = f"({bus} 0 | ramp up| ramp down)"
             gen_select = n.generators.index.str.contains("ramp") & (n.generators["bus"] == bus)
-            n.generators.loc[gen_select, "ramp carrier"] = n.generators.loc[gen_select].index.str.replace(str_to_replace, "")
+            n.generators.loc[gen_select, "ramp carrier"] = n.generators.loc[gen_select].index.str.replace(str_to_replace, "", regex=True)
 
+            interconnectors_ramp_up = [f"{ic} ramp up" for ic in IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY).to_list()]
+            interconnectors_ramp_down = [f"{ic} ramp down" for ic in IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY).to_list()]
+            ic_up_select = n.generators.index.isin(interconnectors_ramp_up)
+            ic_down_select = n.generators.index.isin(interconnectors_ramp_down)
+            n.generators.loc[ic_up_select, "ramp carrier"] = "Interconnector ramp up"
+            n.generators.loc[ic_down_select, "ramp carrier"] = "Interconnector ramp down"
+
+            str_to_replace = f"({bus} | ramp up| ramp down|-20\d0-\d|-20\d0-\d)"
             link_select = n.links.index.str.contains("ramp") & ((n.links["bus0"] == bus) | (n.links["bus1"] == bus))
-            n.links.loc[link_select, "ramp carrier"] = n.links.loc[link_select].index.str.replace(str_to_replace, "")
+            n.links.loc[link_select, "ramp carrier"] = n.links.loc[link_select].index.str.replace(str_to_replace, "", regex=True)
 
-            storage_select = n.storage_units.index.str.contains("ramp") & (n.storage_units["bus"] == bus)
-            n.storage_units.loc[storage_select, "ramp carrier"] = n.storage_units.loc[storage_select].index.str.replace(str_to_replace, "")
+            str_to_replace = f"({bus} | ramp up| ramp down|-20\d0-\d|-20\d0-\d)"
+            storage_select = n.generators.index.str.contains("ramp") & (n.generators["bus"] == bus)
+            n.generators.loc[storage_select, "ramp carrier"] = n.generators.loc[storage_select].index.str.replace(str_to_replace, "", regex=True)
 
             n.generators.loc[n.generators.carrier=='load', "ramp direction"] = "ramp up"
 
@@ -877,6 +891,30 @@ class ResultsComputer(ResultsComputerBase):
             n.components.generators.dynamic["p"]).loc[
             :, available_redispatch_capacity_in_mw.filter(like="ramp down").columns]
         return available_redispatch_capacity_in_mw
+
+    def estimate_ic_compensation_on_average_price_spread(self):
+        self.interconnector_price_spreads.iem_dispatch().T.mean().abs().mul(
+            self.restricted_capacity().sum(axis=1)
+        )
+
+    def get_constraint_management_mix(self):
+        constraint_volume = self.constraint_management_volume.compare_redispatch()
+        constraint_volume = constraint_volume \
+                                .groupby("scenario", axis=1).sum() \
+                                .drop(["StorageUnit ramp up", "StorageUnit ramp down"], level="carrier") \
+                                .groupby(["ramp carrier", "ramp direction"]).sum() \
+                                .sort_index(level="ramp direction") / 1e6
+        return constraint_volume
+
+    def resolved_congestion_loading(self):
+        boundary_loading = self.boundary_loading.compare_redispatch(which="actual")
+        loading_iem = boundary_loading["iem"]
+        loading_iem_fb = boundary_loading["iem_fb"]
+
+        mask_iem_overload = loading_iem > 1
+
+        return (loading_iem - loading_iem_fb).loc[mask_iem_overload]
+
 
 
 if __name__ == "__main__":
