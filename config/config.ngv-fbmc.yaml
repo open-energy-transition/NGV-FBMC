@@ -32,6 +32,7 @@ planning_horizons:
 
 redispatch:
   unconstrain_lines_and_links: true
+  redispatch_profit_mitigation_penalty: 1000  # EUR/MWh of redispatch, applied as positive irrespective of the redispatch direction
   no_redispatch_carriers:
   - nuclear
   - geothermal # No bid/offer multiplier and negligible capacity, so no redispatch for simplicity
@@ -49,7 +50,7 @@ redispatch:
   - H2 Store
   - h2-ccgt
   # These carriers from the phase1 / openTYNDP model
-  # We add them here to suppress warnings - due to the logic they will not be added to 
+  # We add them here to suppress warnings - due to the logic they will not be added to
   # the model anyway, but it makes for a clearer log file
   - H2 import Pipeline
   - H2 pipeline
