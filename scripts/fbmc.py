@@ -74,9 +74,18 @@ class FBMCConstraint:
         # net position of gb follows from energy balance, which implies that sum over all must be 0
         net_position_gb = -net_positions_ic.sum("name")
 
-        m.add_constraints(
-            net_position_gb * ptdf_gb + (net_positions_ic * ptdf_ic).sum("name")
-            <= self.ram,
+        violation = m.add_variables(
+            lower=0,
+            upper=0.5 * (-self.ram).clip(min=0),
+            name="FBMC violation",
+        )
+        m.objective += violation.sum()
+        # Violations are happening on boundaries B3b (a fun one, which has only a negative PTDF value for gb)
+        # and SC2 (positive GB one, and negative ones for Cronos, ElecLink, Kulizumboo, Nautilus, Nemo, NeuConnect)
+
+        m.add_constraints((
+                net_position_gb * ptdf_gb + (net_positions_ic * ptdf_ic).sum("name") - violation <= self.ram
+            ),
             name="FBMC",
         )
 
