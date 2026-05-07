@@ -90,9 +90,9 @@ rule run_phase01_model_as_rule:
         offshore_zone_trajectories=ngviemmodel(
             "resources/ngv-iem/latest/offshore_zone_trajectories.csv"
         ),
-        # results_noce_2040=ngviemmodel(
-        #     "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
-        # ),
+        results_noce_2040=ngviemmodel(
+            "results/ngv-iem/latest/networks/base_s_all___2040_no_ce.nc"
+        ),
     shell:
         """
         pixi run \
