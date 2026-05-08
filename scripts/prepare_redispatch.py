@@ -304,6 +304,11 @@ def create_up_down_plants(
                 # profiles take precedence
                 prices[direction].loc[:, prices_dynamic.columns] = prices_dynamic
 
+            # hacky fix for now 
+            storage_cols = prices['bid'].filter(regex="PHS|hydro|battery").columns
+            prices['bid'].loc[:, storage_cols] = 63
+            prices['offer'].loc[:,storage_cols] = 183
+
             # Bus to connect the up/down plants to, same for _up and _down
             bus = None
             if comp.name in ["Generator", "StorageUnit"]:
