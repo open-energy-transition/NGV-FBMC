@@ -401,6 +401,10 @@ rule prepare_redispatch:
     input:
         network="resources/base/networks/{scenario}/{planning_horizons}.nc",
         dispatch_result=rules.solve_dispatch.output.network,
+        iem_network=branch(
+            lambda wildcards: wildcards.scenario in ["SQ"],
+            rules.prepare_scenario_IEM.output.model,
+        ),
         interconnector_bid_offer=rules.calc_interconnector_bid_offer_profile.output.bid_offer_profile,
         boundary_crossings="config/boundary_definitions.yaml",
         # Unchanged from GB dispatch model
