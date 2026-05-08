@@ -269,10 +269,10 @@ rule retrieve_data_FBMC:
     message:
         "Retrieving data for flow-based market coupling for year {wildcards.planning_horizons} (scenario: FBMC - flow-based market coupling)."
     input:
-        flow_based_constraints="data/NGV-FBMC/primary/20260326/flow_based_constraints_{planning_horizons}.parquet",
+        flow_based_constraints="data/NGV-FBMC/primary/20260421/flow_based_constraints_{planning_horizons}.parquet",
     output:
-        ptdf="data/NGV-FBMC/primary/20260326/ptdf/{planning_horizons}.nc",
-        ram="data/NGV-FBMC/primary/20260326/ram/{planning_horizons}.nc",
+        ptdf="data/NGV-FBMC/primary/20260421/ptdf/{planning_horizons}.nc",
+        ram="data/NGV-FBMC/primary/20260421/ram/{planning_horizons}.nc",
     log:
         "logs/retrieve_data_FBMC/{planning_horizons}.log",
     run:
