@@ -8,6 +8,7 @@ from typing import Self
 
 import pandas as pd
 import pypsa
+import numpy as np
 import xarray as xr
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,11 @@ class FBMCConstraint:
             .stack()
         )
         ram = xr.DataArray.from_series(df["ram"])
+
+        # PTDF and RAM values can have minor numerical deviations that can cause infeasibilities
+        # By rounding towards the next higher number, we mitigate this issue
+        ram = np.ceil(ram)
+        ptdf = np.ceil(ptdf)
 
         return cls(ptdf, ram)
 
