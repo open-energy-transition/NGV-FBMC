@@ -137,6 +137,10 @@ class Boundaries(dict):
             else:
                 self[boundary] = Boundaries.get_boundary(boundary, line_boundaries[boundary], [], network, capacity[boundary])
 
+    def get_capacities(self) -> pd.Series:
+        """Get the capacities of the boundaries as a pandas Series"""
+        return pd.Series({boundary.name: boundary.capacity for boundary in self.values()})
+
 
 if __name__ == "__main__":
     fb_2030 = get_fb_constraints(2030)

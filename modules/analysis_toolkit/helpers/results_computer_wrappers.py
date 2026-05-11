@@ -69,6 +69,7 @@ def metric(func: Optional[Callable[..., Any]] = None, *, restricted_to: Optional
                     self._f = f
                     # saved_kwargs is not used by external callers in this design, but keep for internal convenience
                     self._saved_kwargs = dict(saved_kwargs) if saved_kwargs else {}
+                    print(f"Calling method {func.__name__}")
 
                 @restricted_method
                 def sq_dispatch(self, **kwargs):
