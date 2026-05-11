@@ -32,7 +32,8 @@ def _scale(result: pd.DataFrame, factor: float):
     return result * factor
 
 def _print_axes_levels(result: pd.DataFrame):
-    print(f"index: {result.columns.names}, columns: {result.index.names}")
+    if isinstance(result, pd.DataFrame):
+        print(f"index: {result.columns.names}, columns: {result.index.names}")
 
 def format_result(result: pd.DataFrame, sum_by: list[str], factor: float = 1e-6):
     # Warning: be careful of what is being aggregated and if it requires an abs() before summing, or if it requires
@@ -193,8 +194,8 @@ class ResultsComputer(ResultsComputerBase):
             loading = self._boundary_loading_actual(n=n)
         else:
             raise NotImplementedError
-
-        return (loading > 1).groupby(["boundary", "direction"]).sum()
+        tolerance = 1e-4
+        return (loading > 1 + tolerance).groupby(["boundary", "direction"]).sum()
 
     def _constraint_costs(self, n: pypsa.Network):
         # Constraint costs include both re-dispatch and counter-trading costs
@@ -901,14 +902,46 @@ class ResultsComputer(ResultsComputerBase):
         # .drop(["StorageUnit ramp up", "StorageUnit ramp down"], level="carrier") \
         return constraint_volume
 
-    def resolved_congestion_loading(self):
-        boundary_loading = self.boundary_loading.compare_redispatch(which="actual")
+    def relieved_congestion_loading(self, in_mw: bool=False):
+        boundary_loading = self.boundary_loading.compare_dispatch(which="actual")
         loading_iem = boundary_loading["iem"]
         loading_iem_fb = boundary_loading["iem_fb"]
+        boundary_capability = self.boundary_capacities(n=self.ns.get_iem_dispatch())
 
         mask_iem_overload = loading_iem > 1
 
-        return (loading_iem - loading_iem_fb).loc[mask_iem_overload]
+        if in_mw:
+            print("returning values in MW")
+            loading_iem = loading_iem.mul(boundary_capability, level="boundary")
+            loading_iem_fb = loading_iem_fb.mul(boundary_capability, level="boundary")
+        else:
+            print("returning values in pu")
+
+        return pd.concat(
+            {
+                "IEM": loading_iem.loc[mask_iem_overload],
+                "FBMC": loading_iem_fb.loc[mask_iem_overload],
+                "relieved": (loading_iem - loading_iem_fb).loc[mask_iem_overload]
+            },
+            names=["dataset", *loading_iem.index.names]
+        ).unstack(level="boundary")
+
+    def reduced_volume_per_interconnector(self):
+        ic_flow_iem = self.interconnector_flows.iem_dispatch()
+        ic_flow_iem_fb = self.interconnector_flows.iem_fb_dispatch()
+
+        mask_only_same_direction = ic_flow_iem.mul(ic_flow_iem_fb) >= 0
+
+        reduced_volume = (ic_flow_iem - ic_flow_iem_fb).abs().loc[mask_only_same_direction]
+        return reduced_volume
+
+    def get_interconnector_country_map(self):
+        n = self.ns.get_iem_dispatch()
+        interconnector_names = IndexFinder.get_interconnectors(n, where=GeoOptions.GB_ONLY)
+        return {
+            ic: n.links.bus1.loc[ic][:2]
+            for ic in interconnector_names
+        }
 
 
 

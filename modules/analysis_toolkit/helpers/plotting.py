@@ -158,3 +158,96 @@ class HistogramPlot:
         plt.xlabel("Restricted Capacity [MW]")
         plt.tight_layout()
         plt.show()
+
+class SpecialPlot:
+    @staticmethod
+    def relieved_congestion_loading(rc: ResultsComputer, in_mw=False) -> None:
+        data = rc.relieved_congestion_loading(in_mw=in_mw)
+        plt.figure(figsize=(7, 6))
+        sns.boxenplot(data.loc[["IEM", "FBMC"]].stack().reset_index().sort_values(["boundary", "dataset"], ascending=[True, False]), hue="dataset",
+                      y="boundary", x=0, legend=True, palette=Color.get_n_colors(2), linecolor="black", linewidth=0.5, saturation=1)
+        if in_mw:
+            plt.xlabel("Loading [MW]")
+        else:
+            # plt.text(x=0, y=len(data.columns), s="Boundary limit", ha="center", va="top")
+            plt.xlabel("Loading [pu]")
+
+        xmin, xmax = plt.xlim()
+        bit_of_space = 0.02 * (xmax - xmin)
+        # plt.axvline(1, color='black', linestyle='--', linewidth=1)
+        # shaded area with text for acceptable loading when x value is less than 0
+        plt.axvspan(0, 1, color='green', alpha=0.05, zorder=0)
+        plt.text(x=0.5, y=len(data.columns) + 0.5, s="Within\ncapability", ha="center", va="center")
+        # shaded area with text for overloading when x value is greater than 0
+        plt.axvspan(1, xmax, color='red', alpha=0.05, zorder=0)
+        plt.text(x=1 + bit_of_space, y=len(data.columns) + 0.5, s="Overloading →", ha="left", va="center")
+        plt.text(x=1, y=len(data.columns) + 0.5, s="|", ha="center", va="center")
+        plt.text(x=0, y=len(data.columns) + 0.5, s="|", ha="center", va="center")
+
+        plt.xlim(xmin, xmax)
+        plt.ylabel("Boundary")
+        plt.tight_layout()
+
+
+    # year = 2030
+    # ic_flow_iem = rc[year].interconnector_flows.iem_dispatch()
+    # ic_flow_iem_fb = rc[year].interconnector_flows.iem_fb_dispatch()
+    #
+    # mask_only_same_direction = ic_flow_iem.mul(ic_flow_iem_fb) >= 0
+    #
+    # reduced_volume = (ic_flow_iem.sub(ic_flow_iem_fb)).abs()[mask_only_same_direction]
+
+    # to verify
+    # reduced_volume.sum(axis=1).sum() / 1e6  # in 2030 it should give ~1.4% in 2030 and ~4.5% in 2040
+    # reduced_volume.sum(axis=1).div(ic_flow_iem.abs().sum(axis=1).sum())
+
+    # reduced_trade_volume_per_country_in_percentage[year] = reduced_volume.sum(axis=1).div(
+    #     ic_flow_iem.abs().sum(axis=1).sum()).rename(index=ic_to_country_map).groupby(level=0).sum() * 100
+    #
+    # reduced_trade_volume_per_country_in_absolute[year] = reduced_volume.sum(axis=1).rename(
+    #     index=ic_to_country_map).groupby(level=0).sum() / 1e6
+    #
+    # c_base = "#00ACC2"
+    # # --- 4. Plotting (Vertical Subplots layout) ---
+    # sns.set_context("talk")
+    #
+    # # Create figure (sharey=True keeps the Y-axis aligned for both charts)
+    # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+    # plt.subplots_adjust(wspace=0.1)
+    #
+    # # --- Plot 1: Ramp Up (Left Pane) ---
+    # # Note: Changed to .bar() for vertical charts
+    # year = 2030
+    # ax1.bar(reduced_trade_volume_per_country_in_absolute[year].index,
+    #         reduced_trade_volume_per_country_in_absolute[year].values, color=c_base, width=0.6)
+    #
+    # # Styling Ax1
+    # ax1.set_title(f'Traded volume restriction due to flow-based ({year})', pad=20)
+    # ax1.set_ylabel('Volume [TWh]')
+    # ax1.axhline(0, color='black', linewidth=1)  # Horizontal line at 0 instead of vertical
+    # ax1.grid(True, axis='y', linestyle='--', alpha=0.3)  # Grid moved to Y-axis
+    #
+    # # --- Plot 2: Ramp Down (Right Pane) ---
+    # year = 2040
+    # ax2.bar(reduced_trade_volume_per_country_in_absolute[year].index,
+    #         reduced_trade_volume_per_country_in_absolute[year].values, color=c_base, width=0.6)
+    #
+    # # Styling Ax2
+    # ax2.set_title(f'Traded volume restriction due to flow-based ({year})', pad=20)
+    # ax2.set_ylabel('Volume [TWh]')
+    # ax2.axhline(0, color='black', linewidth=1)
+    # ax2.grid(True, axis='y', linestyle='--', alpha=0.3)
+    # ax2.tick_params(axis='y', which='both', left=False)
+    #
+    # # --- 5. Final Polish & Saving ---
+    # # Ensure all tick labels are perfectly bold
+    # for ax in [ax1, ax2]:
+    #     for label in ax.get_xticklabels() + ax.get_yticklabels():
+    #         label.set_fontweight('bold')
+    #
+    #     # Optional: If the technology names overlap on the X-axis, uncomment the line below to tilt them slightly
+    #     # plt.setp(ax.get_xticklabels(), rotation=15, ha='right')
+    #
+    # plt.tight_layout()
+    # plt.savefig("traded-volume-restriction.png", dpi=300, bbox_inches="tight")
+    # plt.show()
